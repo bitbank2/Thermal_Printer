@@ -1,5 +1,6 @@
 //
-// Thermal_Printer
+// Thermal_Printer Arduino library
+//
 // Copyright (c) 2020 BitBank Software, Inc.
 // Written by Larry Bank (bitbank@pobox.com)
 // Project started 1/6/2020
@@ -405,7 +406,24 @@ void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor)
       {
         error += dy;
         x1 += xinc;
-        mask = 0x80 >> (x1 & 7);
+        if (xinc > 0)
+        {
+          mask >>= 1;
+          if (mask == 0) // change the byte
+          {
+             p++;
+             mask = 0x80;
+          }
+        } // positive delta x
+        else // negative delta x
+        {
+          mask <<= 1;
+          if (mask == 0)
+          {
+             p--;
+             mask = 1;
+          }
+        }
       }
     } // for y
   } // y major case
