@@ -16,6 +16,13 @@ void tpSetBackBuffer(uint8_t *pBuffer, int iWidth, int iHeight);
 //
 int tpDrawText(int x, int y, char *pString, int iFontSize, int bInvert);
 //
+// Load a 1-bpp Windows bitmap into the back buffer
+// Pass the pointer to the beginning of the BMP file
+// along with a x and y offset (upper left corner)
+//
+int tpLoadBMP(uint8_t *pBMP, int bInvert, int iXOffset, int iYOffset);
+
+//
 // Fill the frame buffer with a byte pattern
 // e.g. all off (0x00) or all on (0xff)
 //

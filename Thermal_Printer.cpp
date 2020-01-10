@@ -194,6 +194,81 @@ uint8_t *d, mask;
   return 0;
 } /* tpSetPixel() */
 //
+// Load a 1-bpp Windows bitmap into the back buffer
+// Pass the pointer to the beginning of the BMP file
+// along with a x and y offset (upper left corner)
+//
+int tpLoadBMP(uint8_t *pBMP, int bInvert, int iXOffset, int iYOffset)
+{
+int16_t i16;
+int iOffBits; // offset to bitmap data
+int iPitch;
+int16_t cx, cy, x, y;
+uint8_t *d, *s, pix;
+uint8_t srcmask, dstmask;
+uint8_t bFlipped = false;
+
+  i16 = pBMP[0] | (pBMP[1] << 8);
+  if (i16 != 0x4d42) // must start with 'BM'
+     return -1; // not a BMP file
+  if (iXOffset < 0 || iYOffset < 0)
+     return -1;
+  cx = pBMP[18] + (pBMP[19] << 8);
+  cy = pBMP[22] + (pBMP[23] << 8);
+  if (cy > 0) // BMP is flipped vertically (typical)
+     bFlipped = true;
+  if (cx + iXOffset > bb_width || cy + iYOffset > bb_height) // too big
+     return -1;
+  i16 = pBMP[28] + (pBMP[29] << 8);
+  if (i16 != 1) // must be 1 bit per pixel
+     return -1;
+  iOffBits = pBMP[10] + (pBMP[11] << 8);
+  iPitch = (cx + 7) >> 3; // byte width
+  iPitch = (iPitch + 3) & 0xfffc; // must be a multiple of DWORDS
+
+  if (bFlipped)
+  {
+     iOffBits += ((cy-1) * iPitch); // start from bottom
+     iPitch = -iPitch;
+  }
+  else
+  {
+     cy = -cy;
+  }
+
+// Send it to the gfx buffer
+     for (y=0; y<cy; y++)
+     {
+         s = &pBMP[iOffBits + (y * iPitch)]; // source line
+         d = &pBackBuffer[((iYOffset+y) * bb_pitch) + iXOffset/8];
+         srcmask = 0x80; dstmask = 0x80 >> (iXOffset & 7);
+         pix = *s++;
+         if (bInvert) pix = ~pix;
+         for (x=0; x<cx; x++) // do it a bit at a time
+         {
+           if (pix & srcmask)
+              *d |= dstmask;
+           else
+              *d &= ~dstmask;
+           srcmask >>= 1;
+           if (srcmask == 0) // next pixel
+           {
+              srcmask = 0x80;
+              pix = *s++;
+              if (bInvert) pix = ~pix;
+           }
+           dstmask >>= 1;
+           if (dstmask == 0)
+           {
+              dstmask = 0x80;
+              d++;
+           }
+         } // for x
+  } // for y
+  return 0;
+} /* tpLoadBMP() */
+
+//
 // After a successful scan, connect to the printer
 // returns 1 if successful, 0 for failure
 //
@@ -286,7 +361,9 @@ static void tpWriteData(uint8_t *pData, int iLen)
 {
    if (!bConnected || pRemoteCharacteristicData == NULL)
       return;
-   pRemoteCharacteristicData->writeValue(pData, iLen);
+   // Write BLE data without response, otherwise the printer
+   // stutters and takes much longer to print
+   pRemoteCharacteristicData->writeValue(pData, iLen, false);
 } /* tpWriteData() */
 
 //
@@ -311,7 +388,15 @@ int y;
   for (y=0; y<bb_height; y++)
   {
     tpWriteData(s, bb_pitch);
-    delay(1+(bb_pitch/8)); // need to delay the data a little or it will overwhelm the printer
+    // NB: To reliably send lots of data over BLE, you either use WRITE with
+    // response (which waits for each packet to be acknowledged), or you add your
+    // own delays to give it time to physically print the data.
+    // In my testing, the forced delays actually goes faster since you don't
+    // have to wait for each packet to be acknowledged and the extra delays
+    // BLE adds between sending and receiving.
+    // Without this delay, data will be lost and you may leave the printer
+    // stuck waiting for a graphics command to finish.
+    delay(1+(bb_pitch/8));
     s += bb_pitch;
   }
 } /* tpPrintBuffer() */
