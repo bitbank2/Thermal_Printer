@@ -19,18 +19,29 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <Arduino.h>
+// Two sets of code - one for ESP32
+#ifdef HAL_ESP32_HAL_H_
 #include <BLEDevice.h>
+#else // and another for Arduino's BLE API
+#include <ArduinoBLE.h>
+#endif
 #include "Thermal_Printer.h"
 
+#ifdef HAL_ESP32_HAL_H_
 static BLEUUID SERVICE_UUID("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
 static BLEUUID CHAR_UUID_DATA ("49535343-8841-43F4-A8D4-ECBE34729BB3");
-static char Scanned_BLE_Name[32];
 static String Scanned_BLE_Address;
 static BLEScanResults foundDevices;
 static BLEAddress *Server_BLE_Address;
 static BLERemoteCharacteristic* pRemoteCharacteristicData;
 static BLEScan *pBLEScan;
 static BLEClient* pClient;
+static char Scanned_BLE_Name[32];
+#else
+static BLEDevice peripheral;
+static BLEService prtService;
+static BLECharacteristic pRemoteCharacteristicData;
+#endif
 static char szPrinterName[32];
 static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
@@ -42,6 +53,7 @@ extern "C" {
 extern unsigned char ucFont[], ucBigFont[];
 };
 
+#ifdef HAL_ESP32_HAL_H_
 // Called for each device found during a BLE scan by the client
 class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
 {
@@ -60,6 +72,7 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
       }
     }
 }; // class tpAdvertisedDeviceCallbacks
+#endif
 
 //
 // Provide a back buffer for your printer graphics
@@ -274,6 +287,7 @@ uint8_t bFlipped = false;
 //
 int tpConnect(void)
 {
+#ifdef HAL_ESP32_HAL_H
     pClient  = BLEDevice::createClient();
 //    Serial.printf(" - Created client, connecting to %s", Scanned_BLE_Address.c_str());
 
@@ -306,15 +320,68 @@ int tpConnect(void)
 //      Serial.println("data Service not found");
     }
   return 0;
+#else // Arduino BLE
+    if (!peripheral)
+    {
+        Serial.println("No peripheral");
+        return 0; // scan didn't succeed or wasn't run
+    }
+    
+    // Connect to the BLE Server.
+    Serial.println("connection attempt...");
+    if (peripheral.connect())
+    {
+        Serial.println("Connected!");
+        // you MUST discover the service or you won't be able to access it
+        if (peripheral.discoverService("18f0")) {
+          Serial.println("0x18f0 discovered");
+        } else {
+          Serial.println("0x18f0 disc failed");
+          peripheral.disconnect();
+          while (1);
+        }
+        // Obtain a reference to the service we are after in the remote BLE server.
+        Serial.println("Trying to get service 18f0");
+        prtService = peripheral.service("18f0"); // get the printer service
+        if (prtService)
+        {
+            Serial.println("Got the service");
+            pRemoteCharacteristicData = prtService.characteristic("2af1");
+            if (pRemoteCharacteristicData)
+            {
+                Serial.println("Got the characteristic");
+                bConnected = 1;
+                return 1;
+            }
+        }
+        else
+        {
+            Serial.println("Didn't get the service");
+        }
+    }
+    Serial.println("connection failed");
+    return 0;
+#endif
 } /* tpConnect() */
 
 void tpDisconnect(void)
 {
+#ifdef HAL_ESP32_HAL_H_
    if (bConnected && pClient != NULL)
    {
       pClient->disconnect();
       bConnected = 0;
    }
+#else
+    if (peripheral && bConnected)
+    {
+        if (peripheral.connected())
+        {
+            peripheral.disconnect();
+            bConnected = 0;
+        }
+    }
+#endif
 } /* tpDisconnect() */
 
 //
@@ -327,8 +394,10 @@ void tpDisconnect(void)
 int tpScan(const char *szName, int iSeconds)
 {
 unsigned long ulTime;
-
+int bFound = 0;
+    
     strcpy(szPrinterName, szName);
+#ifdef HAL_ESP32_HAL_H_
     BLEDevice::init("ESP32");
     pBLEScan = BLEDevice::getScan(); //create new scan
     if (pBLEScan != NULL)
@@ -346,24 +415,64 @@ unsigned long ulTime;
        {
 //         Serial.println("Found Device :-)");
            pBLEScan->stop(); // stop scanning
+           bFound = 1;
        }
        else
        {
           delay(10); // if you don't add this, the ESP32 will reset due to watchdog timeout
        }
     }
-    return (Server_BLE_Address != NULL);
+#else // Arduino API
+    // initialize the BLE hardware
+    BLE.begin();
+    // start scanning for the printer service UUID
+//    BLE.scanForUuid("49535343-FE7D-4AE5-8FA9-9FAFD205E455", true);
+    BLE.scanForName(szPrinterName, true);
+    ulTime = millis();
+    while (!bFound && (millis() - ulTime) < iSeconds*1000L)
+    {
+    // check if a peripheral has been discovered
+        peripheral = BLE.available();
+        if (peripheral)
+        {
+        // discovered a peripheral, print out address, local name, and advertised service
+            Serial.print("Found ");
+            Serial.print(peripheral.address());
+            Serial.print(" '");
+            Serial.print(peripheral.localName());
+            Serial.print("' ");
+            Serial.print(peripheral.advertisedServiceUuid());
+            Serial.println();
+
+            if (strcmp(peripheral.localName().c_str(), szPrinterName) == 0)
+            { // found the one we're looking for
+               // stop scanning
+                BLE.stopScan();
+                bFound = 1;
+            }
+        } // if peripheral located
+        else
+        {
+            delay(50); // give time for scanner to find something
+        }
+    } // while scanning
+#endif
+    return bFound;
 } /* tpScan() */
 //
 // Write data to the printer over BLE
 //
 static void tpWriteData(uint8_t *pData, int iLen)
 {
-   if (!bConnected || pRemoteCharacteristicData == NULL)
-      return;
-   // Write BLE data without response, otherwise the printer
-   // stutters and takes much longer to print
-   pRemoteCharacteristicData->writeValue(pData, iLen, false);
+    if (!bConnected || !pRemoteCharacteristicData)
+        return;
+    // Write BLE data without response, otherwise the printer
+    // stutters and takes much longer to print
+#ifdef HAL_ESP32_HAL_H_
+    pRemoteCharacteristicData->writeValue(pData, iLen, false);
+#else
+    pRemoteCharacteristicData.writeValue(pData, iLen);
+#endif
 } /* tpWriteData() */
 
 //
@@ -396,7 +505,10 @@ int y;
     // BLE adds between sending and receiving.
     // Without this delay, data will be lost and you may leave the printer
     // stuck waiting for a graphics command to finish.
+// Arduino Nano 33 BLE doesn't seem to allow writing without response
+#ifdef HAL_ESP32_HAL_H_
     delay(1+(bb_pitch/8));
+#endif
     s += bb_pitch;
   }
 } /* tpPrintBuffer() */
