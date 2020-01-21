@@ -19,6 +19,9 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 #include <Arduino.h>
+// uncomment this line to see debug info on the serial monitor
+//#define DEBUG_OUTPUT
+
 // Two sets of code - one for ESP32
 #ifdef HAL_ESP32_HAL_H_
 #include <BLEDevice.h>
@@ -49,6 +52,7 @@ static int iCursorX = 0;
 static int iCursorY = 0;
 static uint8_t *pBackBuffer = NULL;
 static uint8_t bConnected = 0;
+static void tpWriteData(uint8_t *pData, int iLen);
 extern "C" {
 extern unsigned char ucFont[], ucBigFont[];
 };
@@ -60,15 +64,19 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
 
     void onResult(BLEAdvertisedDevice advertisedDevice)
     {
+#ifdef DEBUG_OUTPUT
       Serial.printf("Scan Result: %s \n", advertisedDevice.toString().c_str());
+#endif
       if (strcmp(advertisedDevice.getName().c_str(), szPrinterName) == 0)
       { // this is what we want
-        Serial.println("A match!");
         Server_BLE_Address = new BLEAddress(advertisedDevice.getAddress());
         Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
         strcpy(Scanned_BLE_Name, advertisedDevice.getName().c_str());
+#ifdef DEBUG_OUTPUT
+        Serial.println("A match!");
         Serial.println((char *)Scanned_BLE_Address.c_str());
         Serial.println(Scanned_BLE_Name);
+#endif
       }
     }
 }; // class tpAdvertisedDeviceCallbacks
@@ -287,7 +295,7 @@ uint8_t bFlipped = false;
 //
 int tpConnect(void)
 {
-#ifdef HAL_ESP32_HAL_H
+#ifdef HAL_ESP32_HAL_H_
     pClient  = BLEDevice::createClient();
 //    Serial.printf(" - Created client, connecting to %s", Scanned_BLE_Address.c_str());
 
@@ -323,43 +331,63 @@ int tpConnect(void)
 #else // Arduino BLE
     if (!peripheral)
     {
+#ifdef DEBUG_OUTPUT
         Serial.println("No peripheral");
+#endif
         return 0; // scan didn't succeed or wasn't run
     }
     
     // Connect to the BLE Server.
+#ifdef DEBUG_OUTPUT
     Serial.println("connection attempt...");
+#endif
     if (peripheral.connect())
     {
+#ifdef DEBUG_OUTPUT
         Serial.println("Connected!");
+#endif
         // you MUST discover the service or you won't be able to access it
         if (peripheral.discoverService("18f0")) {
+#ifdef DEBUG_OUTPUT
           Serial.println("0x18f0 discovered");
+#endif
         } else {
+#ifdef DEBUG_OUTPUT
           Serial.println("0x18f0 disc failed");
+#endif
           peripheral.disconnect();
           while (1);
         }
         // Obtain a reference to the service we are after in the remote BLE server.
+#ifdef DEBUG_OUTPUT
         Serial.println("Trying to get service 18f0");
+#endif
         prtService = peripheral.service("18f0"); // get the printer service
         if (prtService)
         {
+#ifdef DEBUG_OUTPUT
             Serial.println("Got the service");
+#endif
             pRemoteCharacteristicData = prtService.characteristic("2af1");
             if (pRemoteCharacteristicData)
             {
+#ifdef DEBUG_OUTPUT
                 Serial.println("Got the characteristic");
+#endif
                 bConnected = 1;
                 return 1;
             }
         }
         else
         {
+#ifdef DEBUG_OUTPUT
             Serial.println("Didn't get the service");
+#endif
         }
     }
+#ifdef DEBUG_OUTPUT
     Serial.println("connection failed");
+#endif
     return 0;
 #endif
 } /* tpConnect() */
@@ -429,13 +457,14 @@ int bFound = 0;
 //    BLE.scanForUuid("49535343-FE7D-4AE5-8FA9-9FAFD205E455", true);
     BLE.scanForName(szPrinterName, true);
     ulTime = millis();
-    while (!bFound && (millis() - ulTime) < iSeconds*1000L)
+    while (!bFound && (millis() - ulTime) < (unsigned)iSeconds*1000UL)
     {
     // check if a peripheral has been discovered
         peripheral = BLE.available();
         if (peripheral)
         {
         // discovered a peripheral, print out address, local name, and advertised service
+#ifdef DEBUG_OUTPUT
             Serial.print("Found ");
             Serial.print(peripheral.address());
             Serial.print(" '");
@@ -443,7 +472,7 @@ int bFound = 0;
             Serial.print("' ");
             Serial.print(peripheral.advertisedServiceUuid());
             Serial.println();
-
+#endif
             if (strcmp(peripheral.localName().c_str(), szPrinterName) == 0)
             { // found the one we're looking for
                // stop scanning
@@ -474,7 +503,66 @@ static void tpWriteData(uint8_t *pData, int iLen)
     pRemoteCharacteristicData.writeValue(pData, iLen);
 #endif
 } /* tpWriteData() */
+//
+// Select one of 2 available text fonts along with attributes
+// FONT_12x24 or FONT_9x17
+//
+void tpSetFont(int iFont, int iUnderline, int iDoubleWide, int iDoubleTall, int iEmphasized)
+{
+uint8_t ucTemp[4];
+  if (iFont < FONT_12x24 || iFont > FONT_9x17) return;
 
+  ucTemp[0] = 0x1b; // ESC
+  ucTemp[1] = 0x21; // !
+  ucTemp[2] = (uint8_t)iFont;
+  if (iUnderline)
+     ucTemp[2] |= 0x80;
+  if (iDoubleWide)
+     ucTemp[2] |= 0x20;
+  if (iDoubleTall)
+     ucTemp[2] |= 0x10;
+  if (iEmphasized)
+     ucTemp[2] |= 0x8;
+  tpWriteData(ucTemp, 3);
+
+} /* tpSetFont() */
+//
+// Print plain text immediately
+//
+// Pass a C-string (zero terminated char array)
+// If the text doesn't reach the end of the line
+// it will not be printed until the printer receives
+// a CR (carriage return) or new text which forces
+// it to wrap around
+//
+int tpPrint(char *pString)
+{
+int iLen;
+  if (pString)
+  {
+    iLen = strlen(pString);
+    tpWriteData((uint8_t*)pString, iLen);
+    return 1;
+  }
+  return 0;
+} /* tpPrint() */
+//
+// Print plain text immediately
+// Pass a C-string (zero terminated char array)
+// A CR (carriage return) will be added at the end
+// to cause the printer to print the text and advance
+// the paper one line
+//
+int tpPrintLine(char *pString)
+{
+  if (tpPrint(pString))
+  {
+    uint8_t cr = 0xd;
+    tpWriteData(&cr, 1);
+    return 1;
+  }
+  return 0;
+} /* tpPrintLine() */
 //
 // Send the graphics to the printer (must be connected over BLE first)
 //

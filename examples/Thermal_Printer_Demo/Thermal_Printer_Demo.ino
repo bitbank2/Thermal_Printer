@@ -1,3 +1,22 @@
+//
+// Thermal Printer Demo
+// written by Larry Bank
+// Copyright (c) 2020 BitBank Software, Inc.
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+//
+
 #include <Thermal_Printer.h>
 static uint8_t ucBuf[48 * 384];
 #define WIDTH 384
@@ -314,7 +333,7 @@ void setup() {
   // put your setup code here, to run once:
   Serial.begin(115200);
   while (!Serial);
-  Serial.println("Preparing image buffer...");
+  Serial.println((char *)"Preparing image buffer...");
   tpSetBackBuffer(ucBuf, WIDTH, HEIGHT);
   tpFill(0);
 //  for (i=0; i<WIDTH; i += 32)
@@ -329,26 +348,41 @@ void setup() {
   i = tpLoadBMP((uint8_t *)logo_bmp, 0, 82, 64);
   if (i != 0)
   {
-    Serial.println("tpLoadBMP error!");
+    Serial.println((char *)"tpLoadBMP error!");
     while (1) {};
   }
-  Serial.println("Scanning for BLE printer");
+  Serial.println((char *)"Scanning for BLE printer");
   if (tpScan("MTP-2",5))
   {
-    Serial.println("Found a printer!, connecting...");
+    Serial.println((char *)"Found a printer!, connecting...");
     if (tpConnect())
     {
-      Serial.println("Connected!, printing graphics");
+      Serial.println((char *)"Connected!, printing graphics");
       tpPrintBuffer();
-      Serial.println("Disconnecting");
+      Serial.println((char *)"Testing plain text printing");
+      tpSetFont(0, 0, 0, 0, 0);
+      tpPrint((char *)"12x24 plain text\r");
+      tpSetFont(1, 0, 0, 0, 0);
+      tpPrint((char *)"9x17 plain text\r");
+      tpSetFont(1, 1, 0, 0, 0);
+      tpPrint((char *)"Underlined\r");
+      tpSetFont(1, 0, 1, 0, 0);
+      tpPrint((char *)"Double Wide\r");
+      tpSetFont(1, 0, 0, 1, 0);
+      tpPrint((char *)"Double Tall\r");
+      tpSetFont(1, 0, 1, 1, 0);
+      tpPrint((char *)"Double Tall+Wide\r");
+      tpSetFont(1, 0, 1, 1, 1);
+      tpPrint((char *)"Double Tall+Wide + emphasized\r");
+      Serial.println((char *)"Disconnecting");
       tpDisconnect();
-      Serial.println("Done!");
+      Serial.println((char *)"Done!");
       while (1) {};      
     }
   }
   else
   {
-    Serial.println("Didn't find a printer :( ");
+    Serial.println((char *)"Didn't find a printer :( ");
   }
 }
 
