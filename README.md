@@ -25,3 +25,6 @@ Features<br>
 - Includes easy to use BLE scanning and connection logic<br>
 - Doesn't depend on any other 3rd party code<br>
 
+If you find this code useful, please consider sending a donation.
+
+[![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=SR4F44J2UR8S4)
