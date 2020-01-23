@@ -61,13 +61,13 @@ extern unsigned char ucFont[], ucBigFont[];
 // Called for each device found during a BLE scan by the client
 class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
 {
-
     void onResult(BLEAdvertisedDevice advertisedDevice)
     {
+      int iLen = strlen(szPrinterName);
 #ifdef DEBUG_OUTPUT
       Serial.printf("Scan Result: %s \n", advertisedDevice.toString().c_str());
 #endif
-      if (strcmp(advertisedDevice.getName().c_str(), szPrinterName) == 0)
+      if (memcmp(advertisedDevice.getName().c_str(), szPrinterName, iLen) == 0)
       { // this is what we want
         Server_BLE_Address = new BLEAddress(advertisedDevice.getAddress());
         Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
@@ -297,8 +297,9 @@ int tpConnect(void)
 {
 #ifdef HAL_ESP32_HAL_H_
     pClient  = BLEDevice::createClient();
-//    Serial.printf(" - Created client, connecting to %s", Scanned_BLE_Address.c_str());
-
+#ifdef DEBUG_OUTPUT
+    Serial.printf(" - Created client, connecting to %s", Scanned_BLE_Address.c_str());
+#endif
     // Connect to the BLE Server.
     pClient->connect(*Server_BLE_Address);
 //    if (!pClient->isConnected())
@@ -316,7 +317,9 @@ int tpConnect(void)
         pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA);
         if (pRemoteCharacteristicData != NULL)
         {
-//          Serial.println("Got data transfer characteristic!");
+#ifdef DEBUG_OUTPUT
+          Serial.println("Got data transfer characteristic!");
+#endif
           bConnected = 1;
           return 1;
         }
@@ -423,6 +426,7 @@ int tpScan(const char *szName, int iSeconds)
 {
 unsigned long ulTime;
 int bFound = 0;
+int iLen = strlen(szName);
     
     strcpy(szPrinterName, szName);
 #ifdef HAL_ESP32_HAL_H_
@@ -437,11 +441,13 @@ int bFound = 0;
       pBLEScan->start(iSeconds); //Scan for N seconds
     }
     ulTime = millis();
-    while (Server_BLE_Address == NULL && (millis() - ulTime) < iSeconds*1000L)
+    while (!bFound && (millis() - ulTime) < iSeconds*1000L)
     {
-       if (strcmp(Scanned_BLE_Name,szPrinterName) == 0) // found a device we want
+       if (memcmp(Scanned_BLE_Name,szPrinterName, iLen) == 0) // found a device we want
        {
-//         Serial.println("Found Device :-)");
+#ifdef DEBUG_OUTPUT
+           Serial.println("Found Device :-)");
+#endif
            pBLEScan->stop(); // stop scanning
            bFound = 1;
        }
@@ -473,7 +479,7 @@ int bFound = 0;
             Serial.print(peripheral.advertisedServiceUuid());
             Serial.println();
 #endif
-            if (strcmp(peripheral.localName().c_str(), szPrinterName) == 0)
+            if (memcmp(peripheral.localName().c_str(), szPrinterName, iLen) == 0)
             { // found the one we're looking for
                // stop scanning
                 BLE.stopScan();
