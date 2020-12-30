@@ -20,7 +20,7 @@ See the include (.H) file for a description of each function.
 Features<br>
 ========<br>
 - Supports the GOOJPRT PT-210 printer (so far)<br>
-- Compiles on both ESP32 and Arduino Nano 33 BLE<br>
+- Compiles on ESP32, Adafruit nRF52 and Arduino Nano 33 BLE<br>
 - Supports graphics (dots, lines, text, bitmaps) and plain text output<br>
 - Includes easy to use BLE scanning and connection logic<br>
 - Doesn't depend on any other 3rd party code<br>

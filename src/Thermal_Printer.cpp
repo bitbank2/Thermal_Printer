@@ -25,26 +25,18 @@
 // Two sets of code - one for ESP32
 #ifdef HAL_ESP32_HAL_H_
 #include <BLEDevice.h>
-#else // and another for Arduino's BLE API
+#endif
+
+#ifdef ARDUINO_ARDUINO_NANO33BLE
 #include <ArduinoBLE.h>
 #endif
+
+#ifdef ARDUINO_NRF52_ADAFRUIT
+#include <bluefruit.h>
+#endif
+
 #include "Thermal_Printer.h"
 
-#ifdef HAL_ESP32_HAL_H_
-static BLEUUID SERVICE_UUID("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
-static BLEUUID CHAR_UUID_DATA ("49535343-8841-43F4-A8D4-ECBE34729BB3");
-static String Scanned_BLE_Address;
-static BLEScanResults foundDevices;
-static BLEAddress *Server_BLE_Address;
-static BLERemoteCharacteristic* pRemoteCharacteristicData;
-static BLEScan *pBLEScan;
-static BLEClient* pClient;
-static char Scanned_BLE_Name[32];
-#else
-static BLEDevice peripheral;
-static BLEService prtService;
-static BLECharacteristic pRemoteCharacteristicData;
-#endif
 static char szPrinterName[32];
 static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
@@ -56,6 +48,115 @@ static void tpWriteData(uint8_t *pData, int iLen);
 extern "C" {
 extern unsigned char ucFont[], ucBigFont[];
 };
+
+#ifdef ARDUINO_NRF52_ADAFRUIT
+// Bluetooth support for Adafruit nrf52 boards
+const uint8_t myServiceUUID[16] = {0x55, 0xe4, 0x05, 0xd2, 0xaf, 0x9f, 0xa9, 0x8f, 0xe5, 0x4a, 0x7d, 0xfe, 0x43, 0x53, 0x53, 0x49};
+const uint8_t myDataUUID[16] = {0xb3, 0x9b, 0x72, 0x34, 0xbe, 0xec, 0xd4, 0xa8, 0xf4, 0x43, 0x41, 0x88, 0x43, 0x53, 0x53, 0x49};
+//#define myServiceUUID 0xFEA0
+//#define myDataUUID 0xFEA1
+static ble_gap_evt_adv_report_t the_report;
+static uint16_t the_conn_handle;
+static int bNRFFound;
+//BLEClientCharacteristic myDataChar(myDataUUID);
+//BLEClientService myService(myServiceUUID);
+BLEClientService myService(0x18f0);
+BLEClientCharacteristic myDataChar(0x2af1);
+/**
+ * Callback invoked when an connection is established
+ * @param conn_handle
+ */
+static void connect_callback(uint16_t conn_handle)
+{
+//  Serial.println("Connected!");
+//  Serial.print("Discovering FEA0 Service ... ");
+    the_conn_handle = conn_handle;
+  // If FEA0 is not found, disconnect and return
+  if ( !myService.discover(conn_handle) )
+  {
+#ifdef DEBUG_OUTPUT
+    Serial.println("Didn't find our service, disconnecting...");
+#endif
+      // disconect since we couldn't find our service
+    Bluefruit.disconnect(conn_handle);
+    return;
+  }
+ 
+  // Once FEA0 service is found, we continue to discover its characteristics
+  if ( !myDataChar.discover() )
+  {
+    // Data char is mandatory, if it is not found (valid), then disconnect
+#ifdef DEBUG_OUTPUT
+    Serial.println("Data characteristic is mandatory but not found");
+#endif
+    Bluefruit.disconnect(conn_handle);
+    return;
+  }
+    bConnected = 1; // success!
+} /* connect_callback() */
+/**
+ * Callback invoked when a connection is dropped
+ * @param conn_handle
+ * @param reason
+ */
+static void disconnect_callback(uint16_t conn_handle, uint8_t reason)
+{
+  (void) conn_handle;
+  (void) reason;
+    bConnected = 0;
+//  Serial.println("Disconnected");
+} /* disconnect_callback() */
+
+static void scan_callback(ble_gap_evt_adv_report_t* report)
+{
+//    Serial.printf("found something %s\n", report->data.p_data);
+//  if (Bluefruit.Scanner.checkReportForUuid(report, myServiceUUID))
+//    char *name = (char *)report->data.p_data;
+//    int i;
+//    for (i=0; i<report->data.len; i++)
+//       if (name[i] == szPrinterName[0]) break; // "parse" for the name in the adv data
+//  if (name && memcmp(&name[i], szPrinterName, strlen(szPrinterName)) == 0)
+  {
+#ifdef DEBUG_OUTPUT
+     Serial.println("Found Printer!");
+#endif
+      bNRFFound = 1;
+      Bluefruit.Scanner.stop();
+//      Serial.print("RemoteDisplay UUID detected. Connecting ... ");
+      memcpy(&the_report, report, sizeof(ble_gap_evt_adv_report_t));
+//      Bluefruit.Central.connect(report);
+  }
+//  else // keep looking
+//  {
+    // For Softdevice v6: after received a report, scanner will be paused
+    // We need to call Scanner resume() to continue scanning
+//    Bluefruit.Scanner.resume();
+//  }
+} /* scan_callback() */
+
+static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len)
+{
+} /* notify_callback() */
+
+#endif // Adafruit nrf52
+
+#ifdef HAL_ESP32_HAL_H_
+static BLEUUID SERVICE_UUID("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
+static BLEUUID CHAR_UUID_DATA ("49535343-8841-43F4-A8D4-ECBE34729BB3");
+static String Scanned_BLE_Address;
+static BLEScanResults foundDevices;
+static BLEAddress *Server_BLE_Address;
+static BLERemoteCharacteristic* pRemoteCharacteristicData;
+static BLEScan *pBLEScan;
+static BLEClient* pClient;
+static char Scanned_BLE_Name[32];
+#endif
+
+#ifdef ARDUINO_ARDUINO_NANO33BLE
+static BLEDevice peripheral;
+static BLEService prtService;
+static BLECharacteristic pRemoteCharacteristicData;
+#endif
 
 #ifdef HAL_ESP32_HAL_H_
 // Called for each device found during a BLE scan by the client
@@ -331,7 +432,8 @@ int tpConnect(void)
 //      Serial.println("data Service not found");
     }
   return 0;
-#else // Arduino BLE
+#endif
+#ifdef ARDUINO_ARDUINO_NANO33BLE // Arduino BLE
     if (!peripheral)
     {
 #ifdef DEBUG_OUTPUT
@@ -392,7 +494,16 @@ int tpConnect(void)
     Serial.println("connection failed");
 #endif
     return 0;
-#endif
+#endif // NANO33
+#ifdef ARDUINO_NRF52_ADAFRUIT
+    Bluefruit.Central.connect(&the_report);
+    long ulTime = millis();
+    while (!bConnected && (millis() - ulTime) < 4000) // allow 4 seconds for the connection to occur
+    {
+        delay(20);
+    }
+    return bConnected;
+#endif // ADAFRUIT
 } /* tpConnect() */
 
 void tpDisconnect(void)
@@ -403,7 +514,8 @@ void tpDisconnect(void)
       pClient->disconnect();
       bConnected = 0;
    }
-#else
+#endif
+#ifdef ARDUINO_ARDUINO_NANO33BLE
     if (peripheral && bConnected)
     {
         if (peripheral.connected())
@@ -411,6 +523,13 @@ void tpDisconnect(void)
             peripheral.disconnect();
             bConnected = 0;
         }
+    }
+#endif
+#ifdef ARDUINO_NRF52_ADAFRUIT
+    if (bConnected)
+    {
+        bConnected = 0;
+        Bluefruit.disconnect(the_conn_handle);
     }
 #endif
 } /* tpDisconnect() */
@@ -456,7 +575,8 @@ int iLen = strlen(szName);
           delay(10); // if you don't add this, the ESP32 will reset due to watchdog timeout
        }
     }
-#else // Arduino API
+#endif
+#ifdef ARDUINO_ARDUNIO_NANO33BLE // Arduino API
     // initialize the BLE hardware
     BLE.begin();
     // start scanning for the printer service UUID
@@ -492,6 +612,50 @@ int iLen = strlen(szName);
         }
     } // while scanning
 #endif
+#ifdef ARDUINO_NRF52_ADAFRUIT
+    bConnected = 0;
+    // Initialize Bluefruit with maximum connections as Peripheral = 0, Central = 1
+    // SRAM usage required by SoftDevice will increase dramatically with number of connections
+    Bluefruit.begin(0, 1);
+    /* Set the device name */
+    Bluefruit.setName("Bluefruit52");
+    /* Set the LED interval for blinky pattern on BLUE LED */
+    Bluefruit.setConnLedInterval(250);
+//    Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
+//    Bluefruit.configCentralBandwidth(BANDWIDTH_MAX);
+    /* Start Central Scanning
+     * - Enable auto scan if disconnected
+     * - Filter out packet with a min rssi
+     * - Interval = 100 ms, window = 50 ms
+     * - Use active scan (used to retrieve the optional scan response adv packet)
+     * - Start(0) = will scan forever since no timeout is given
+     */
+    bNRFFound = 0;
+    Bluefruit.Scanner.setRxCallback(scan_callback);
+    Bluefruit.Scanner.restartOnDisconnect(true);
+//    Bluefruit.Scanner.filterRssi(-72);
+    Bluefruit.Scanner.filterUuid(myService.uuid);
+    Bluefruit.Scanner.setInterval(160, 80);       // in units of 0.625 ms
+    Bluefruit.Scanner.useActiveScan(true);        // Request scan response data
+    Bluefruit.Scanner.start(0);                   // 0 = Don't stop
+    // allow the timeout for the scan
+    ulTime = millis();
+    while (!bNRFFound && (millis() - ulTime) < (unsigned)iSeconds*1000UL)
+    {
+        delay(10);
+    }
+    Bluefruit.Scanner.stop();
+//    Serial.println("Stopping the scan");
+    myService.begin(); // start my client service
+    // Initialize client characteristics of VirtualDisplay.
+    // Note: Client Chars will be added to the last service that is begin()ed.
+    myDataChar.setNotifyCallback(notify_callback);
+    myDataChar.begin();
+    // Callbacks for Central
+    Bluefruit.Central.setConnectCallback(connect_callback);
+    Bluefruit.Central.setDisconnectCallback(disconnect_callback);
+    bFound = bNRFFound;
+#endif // ADAFRUIT
     return bFound;
 } /* tpScan() */
 //
@@ -499,14 +663,18 @@ int iLen = strlen(szName);
 //
 static void tpWriteData(uint8_t *pData, int iLen)
 {
-    if (!bConnected || !pRemoteCharacteristicData)
+    if (!bConnected) // || !pRemoteCharacteristicData)
         return;
     // Write BLE data without response, otherwise the printer
     // stutters and takes much longer to print
 #ifdef HAL_ESP32_HAL_H_
     pRemoteCharacteristicData->writeValue(pData, iLen, false);
-#else
+#endif
+#ifdef ARDUINO_ARDUINO_NANO33BLE
     pRemoteCharacteristicData.writeValue(pData, iLen);
+#endif
+#ifdef ARDUINO_NRF52_ADAFRUIT
+    myDataChar.write((const void *)pData, (uint16_t)iLen);
 #endif
 } /* tpWriteData() */
 //
