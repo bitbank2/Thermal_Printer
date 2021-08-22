@@ -3,17 +3,18 @@
 // written by Larry Bank
 // Copyright (c) 2020 BitBank Software, Inc.
 //
-// Copyright 2020 BitBank Software, Inc. All Rights Reserved.
-// Licensed under the Apache License, Version 2.0 (the "License");
-// you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//    http://www.apache.org/licenses/LICENSE-2.0
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-//===========================================================================
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 
 #ifndef __THERMAL_PRINTER_H__
@@ -57,6 +58,16 @@ int tpPrint(char *pString);
 // the paper one line
 //
 int tpPrintLine(char *pString);
+
+#define MODE_WITH_RESPONSE 1
+#define MODE_WITHOUT_RESPONSE 0
+//
+// Set the BLE write mode
+// MODE_WITH_RESPONSE asks the receiver to ack each packet
+// it will be slower, but might be necessary to successfully transmit
+// every packet. The default is to wait for a response for each write
+//
+void tpSetWriteMode(uint8_t bWriteMode);
 //
 // Draw text into the graphics buffer
 //
@@ -100,4 +111,5 @@ int tpScan(const char *szName, int iSeconds);
 //
 int tpConnect(void);
 void tpDisconnect(void);
+int tpIsConnected(void);
 #endif // __THERMAL_PRINTER_H__
