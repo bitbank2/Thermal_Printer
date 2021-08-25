@@ -597,7 +597,7 @@ int iLen = strlen(szName);
        }
     }
 #endif
-#ifdef ARDUINO_ARDUNIO_NANO33BLE // Arduino API
+#ifdef ARDUINO_ARDUINO_NANO33BLE // Arduino API
     // initialize the BLE hardware
     BLE.begin();
     // start scanning for the printer service UUID

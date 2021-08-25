@@ -336,14 +336,14 @@ void setup() {
   Serial.println((char *)"Preparing image buffer...");
   tpSetBackBuffer(ucBuf, WIDTH, HEIGHT);
   tpFill(0);
-//  for (i=0; i<WIDTH; i += 32)
-//  {
-//    tpDrawLine(i, 0, WIDTH-1-i, HEIGHT-1, 1);
-//  }
-//  for (i=0; i<HEIGHT; i+= 8)
-//  {
-//    tpDrawLine(WIDTH-1, i, 0, HEIGHT-1-i, 1);
-//  }
+  for (i=0; i<WIDTH; i += 32)
+  {
+    tpDrawLine(i, 0, WIDTH-1-i, HEIGHT-1, 1);
+  }
+  for (i=0; i<HEIGHT; i+= 8)
+  {
+    tpDrawLine(WIDTH-1, i, 0, HEIGHT-1-i, 1);
+  }
   tpDrawText(0,0,(char *)"BitBank Thermal Printer", FONT_LARGE, 0);
   i = tpLoadBMP((uint8_t *)logo_bmp, 0, 82, 64);
   if (i != 0)
