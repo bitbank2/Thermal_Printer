@@ -20,7 +20,7 @@
 //
 #include <Arduino.h>
 // uncomment this line to see debug info on the serial monitor
-//#define DEBUG_OUTPUT
+#define DEBUG_OUTPUT
 
 // Two sets of code - one for ESP32
 #ifdef HAL_ESP32_HAL_H_
@@ -38,6 +38,7 @@
 #include "Thermal_Printer.h"
 
 static char szPrinterName[32];
+static uint8_t ucPrinterType; // one of PRINTER_PT210, PRINTER_CAT, etc
 static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
 static int iCursorX = 0;
@@ -49,11 +50,52 @@ static void tpWriteData(uint8_t *pData, int iLen);
 extern "C" {
 extern unsigned char ucFont[], ucBigFont[];
 };
+static uint8_t tpFindPrinterName(char *szName);
+static void tpPreGraphics(int iWidth, int iHeight);
+static void tpPostGraphics(void);
+static void tpSendScanline(uint8_t *pSrc, int iLen);
+
+// Names and types of supported printers
+const char *szBLENames[] = {(char *)"MTP-2", (char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", NULL};
+const uint8_t ucBLETypes[] = {PRINTER_PT210, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT};
+
+const char *szServiceNames[] = {(char *)"18f0", (char *)"ae30"}; // 16-bit UUID of the printer services we want
+const char *szCharNames[] = {(char *)"2af1", (char *)"ae01"}; // 16-bit UUID of printer data characteristics we want
+// Command sequences for the 'cat' printer
+const int8_t getDevState[] = {81, 120, -93, 0, 1, 0, 0, 0, -1};
+const int8_t setQ200DPI[] = {81, 120, -92, 0, 1, 0, 50, -98, -1};
+const int8_t latticeStart[] = {81, 120, -90, 0, 11, 0, -86, 85, 23,
+                        56, 68, 95, 95, 95, 68, 56, 44, -95, -1};
+const int8_t latticeEnd[] = {81, 120, -90, 0, 11, 0, -86, 85, 23, 0, 0, 0, 0, 0, 0, 0, 23, 17, -1};
+const int8_t paperFeed[] = {81, 120, -67, 0, 1, 0, 30, 90, -1};
+int i;
+const int8_t setPaper[] = {81, 120, -95, 0, 2, 0, 48, 0, -7, -1};
+const int8_t printImage[] = {81, 120, -66, 0, 1, 0, 0, 0, -1};
+
+const int8_t cChecksumTable[] = {0, 7, 14, 9, 28, 27, 18, 21, 56, 63, 54, 49, 36, 35, 42, 45, 112, 119, 126, 121, 108, 107, 98, 101, 72, 79, 70, 65, 84, 83, 90, 93, -32, -25, -18, -23, -4, -5, -14, -11, -40, -33, -42, -47, -60, -61, -54, -51, -112, -105, -98, -103, -116, -117, -126, -123, -88, -81, -90, -95, -76, -77, -70, -67, -57, -64, -55, -50, -37, -36, -43, -46, -1, -8, -15, -10, -29, -28, -19, -22, -73, -80, -71, -66, -85, -84, -91, -94, -113, -120, -127, -122, -109, -108, -99, -102, 39, 32, 41, 46, 59, 60, 53, 50, 31, 24, 17, 22, 3, 4, 13, 10, 87, 80, 89, 94, 75, 76, 69, 66, 111, 104, 97, 102, 115, 116,
+                     125, 122, -119, -114, -121, -128, -107, -110, -101, -100, -79, -74, -65, -72, -83, -86, -93, -92, -7, -2, -9, -16, -27, -30, -21, -20, -63, -58, -49, -56, -35, -38, -45, -44, 105, 110, 103, 96, 117, 114, 123, 124, 81, 86, 95, 88, 77, 74, 67, 68, 25, 30, 23, 16, 5, 2, 11, 12, 33, 38, 47, 40, 61, 58, 51, 52, 78, 73, 64, 71, 82, 85, 92, 91, 118, 113, 120, 127, 106, 109, 100, 99, 62, 57, 48, 55, 34, 37, 44, 43, 6, 1, 8, 15, 26, 29, 20, 19, -82, -87, -96, -89, -78, -75, -68, -69, -106, -111, -104, -97, -118, -115, -124, -125, -34, -39, -48, -41, -62, -59, -52, -53, -26, -31, -24, -17, -6, -3, -12, -13};
+
+/* Table of byte flip values to mirror-image incoming CCITT data */
+const unsigned char ucMirror[256]=
+     {0, 128, 64, 192, 32, 160, 96, 224, 16, 144, 80, 208, 48, 176, 112, 240,
+      8, 136, 72, 200, 40, 168, 104, 232, 24, 152, 88, 216, 56, 184, 120, 248,
+      4, 132, 68, 196, 36, 164, 100, 228, 20, 148, 84, 212, 52, 180, 116, 244,
+      12, 140, 76, 204, 44, 172, 108, 236, 28, 156, 92, 220, 60, 188, 124, 252,
+      2, 130, 66, 194, 34, 162, 98, 226, 18, 146, 82, 210, 50, 178, 114, 242,
+      10, 138, 74, 202, 42, 170, 106, 234, 26, 154, 90, 218, 58, 186, 122, 250,
+      6, 134, 70, 198, 38, 166, 102, 230, 22, 150, 86, 214, 54, 182, 118, 246,
+      14, 142, 78, 206, 46, 174, 110, 238, 30, 158, 94, 222, 62, 190, 126, 254,
+      1, 129, 65, 193, 33, 161, 97, 225, 17, 145, 81, 209, 49, 177, 113, 241,
+      9, 137, 73, 201, 41, 169, 105, 233, 25, 153, 89, 217, 57, 185, 121, 249,
+      5, 133, 69, 197, 37, 165, 101, 229, 21, 149, 85, 213, 53, 181, 117, 245,
+      13, 141, 77, 205, 45, 173, 109, 237, 29, 157, 93, 221, 61, 189, 125, 253,
+      3, 131, 67, 195, 35, 163, 99, 227, 19, 147, 83, 211, 51, 179, 115, 243,
+      11, 139, 75, 203, 43, 171, 107, 235, 27, 155, 91, 219, 59, 187, 123, 251,
+      7, 135, 71, 199, 39, 167, 103, 231, 23, 151, 87, 215, 55, 183, 119, 247,
+      15, 143, 79, 207, 47, 175, 111, 239, 31, 159, 95, 223, 63, 191, 127, 255};
 
 #ifdef ARDUINO_NRF52_ADAFRUIT
 // Bluetooth support for Adafruit nrf52 boards
-const uint8_t myServiceUUID[16] = {0x55, 0xe4, 0x05, 0xd2, 0xaf, 0x9f, 0xa9, 0x8f, 0xe5, 0x4a, 0x7d, 0xfe, 0x43, 0x53, 0x53, 0x49};
-const uint8_t myDataUUID[16] = {0xb3, 0x9b, 0x72, 0x34, 0xbe, 0xec, 0xd4, 0xa8, 0xf4, 0x43, 0x41, 0x88, 0x43, 0x53, 0x53, 0x49};
 //#define myServiceUUID 0xFEA0
 //#define myDataUUID 0xFEA1
 static ble_gap_evt_adv_report_t the_report;
@@ -61,18 +103,21 @@ static uint16_t the_conn_handle;
 static int bNRFFound;
 //BLEClientCharacteristic myDataChar(myDataUUID);
 //BLEClientService myService(myServiceUUID);
-BLEClientService myService(0x18f0);
-BLEClientCharacteristic myDataChar(0x2af1);
+BLEClientService myService; //(0x18f0);
+BLEClientCharacteristic myDataChar; //(0x2af1);
+
 /**
  * Callback invoked when an connection is established
  * @param conn_handle
  */
 static void connect_callback(uint16_t conn_handle)
 {
-//  Serial.println("Connected!");
-//  Serial.print("Discovering FEA0 Service ... ");
+#ifdef DEBUG_OUTPUT
+  Serial.println("Connected!");
+  Serial.print("Discovering Service ... ");
+#endif
     the_conn_handle = conn_handle;
-  // If FEA0 is not found, disconnect and return
+  // If Service UUID is not found, disconnect and return
   if ( !myService.discover(conn_handle) )
   {
 #ifdef DEBUG_OUTPUT
@@ -108,8 +153,30 @@ static void disconnect_callback(uint16_t conn_handle, uint8_t reason)
 //  Serial.println("Disconnected");
 } /* disconnect_callback() */
 
+void ParseDeviceName(uint8_t *s, char *szOut)
+{
+  int bDone = 0, i = 0;
+  int iLen;
+  szOut[0] = 0; // assume we won't find a device name
+  while (i < 64 && !bDone) {
+    iLen = s[i++];
+    if (s[i] == 0x09) { // device name
+      i++; // skip type
+      memcpy(szOut, &s[i], iLen-1);
+      szOut[iLen-1] = 0; // zero terminate
+      bDone = 1;
+    } else {
+      i += iLen; // skip this data field
+    }
+  } 
+} /* ParseDeviceName() */
+
 static void scan_callback(ble_gap_evt_adv_report_t* report)
 {
+char szTemp[32];
+
+   ParseDeviceName(report->data.p_data, szTemp);
+
 //    Serial.printf("found something %s\n", report->data.p_data);
 //  if (Bluefruit.Scanner.checkReportForUuid(report, myServiceUUID))
 //    char *name = (char *)report->data.p_data;
@@ -117,16 +184,22 @@ static void scan_callback(ble_gap_evt_adv_report_t* report)
 //    for (i=0; i<report->data.len; i++)
 //       if (name[i] == szPrinterName[0]) break; // "parse" for the name in the adv data
 //  if (name && memcmp(&name[i], szPrinterName, strlen(szPrinterName)) == 0)
-  {
 #ifdef DEBUG_OUTPUT
-     Serial.println("Found Printer!");
+       Serial.println("Found something!");
+       Serial.print("device name = ");
+       Serial.println(szTemp);
 #endif
+    ucPrinterType = tpFindPrinterName(szTemp);
+    if (ucPrinterType > PRINTER_COUNT) { // nothing supported found
+       Bluefruit.Scanner.resume();
+    } else { // we can stop scanning
       bNRFFound = 1;
       Bluefruit.Scanner.stop();
-//      Serial.print("RemoteDisplay UUID detected. Connecting ... ");
       memcpy(&the_report, report, sizeof(ble_gap_evt_adv_report_t));
-//      Bluefruit.Central.connect(report);
-  }
+#ifdef DEBUG_OUTPUT
+      Serial.println("Found a supported printer!");
+#endif
+    }
 //  else // keep looking
 //  {
     // For Softdevice v6: after received a report, scanner will be paused
@@ -142,8 +215,13 @@ static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data, uint16_
 #endif // Adafruit nrf52
 
 #ifdef HAL_ESP32_HAL_H_
-static BLEUUID SERVICE_UUID("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
-static BLEUUID CHAR_UUID_DATA ("49535343-8841-43F4-A8D4-ECBE34729BB3");
+static BLEUUID SERVICE_UUID0("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
+static BLEUUID CHAR_UUID_DATA0 ("49535343-8841-43F4-A8D4-ECBE34729BB3");
+static BLEUUID SERVICE_UUID1("0000AE30-0000-1000-8000-00805F9B34FB"); //Service
+static BLEUUID CHAR_UUID_DATA1("0000AE01-0000-1000-8000-00805F9B34FB"); // data characteristic
+//static BLEUUID SERVICE_UUID1(BLEUUID ((uint16_t)0xae30));
+//static BLEUUID CHAR_UUID_DATA1(BLEUUID((uint16_t)0xae01));
+
 static String Scanned_BLE_Address;
 static BLEScanResults foundDevices;
 static BLEAddress *Server_BLE_Address;
@@ -174,7 +252,7 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
 #ifdef DEBUG_OUTPUT
       Serial.printf("Scan Result: %s \n", advertisedDevice.toString().c_str());
 #endif
-      if (memcmp(advertisedDevice.getName().c_str(), szPrinterName, iLen) == 0)
+      if (iLen > 0 && memcmp(advertisedDevice.getName().c_str(), szPrinterName, iLen) == 0)
       { // this is what we want
         Server_BLE_Address = new BLEAddress(advertisedDevice.getAddress());
         Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
@@ -184,7 +262,25 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
         Serial.println((char *)Scanned_BLE_Address.c_str());
         Serial.println(Scanned_BLE_Name);
 #endif
-      }
+      } else if (iLen == 0) { // check for supported printers
+        int i=0, bDone = 0;
+        while (!bDone && szBLENames[i] != NULL) {
+          if (strcmp(advertisedDevice.getName().c_str(), szBLENames[i]) == 0) { // found a valid one!
+            Server_BLE_Address = new BLEAddress(advertisedDevice.getAddress());
+            Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
+            strcpy(Scanned_BLE_Name, advertisedDevice.getName().c_str());
+            bDone = 1;
+#ifdef DEBUG_OUTPUT
+            Serial.print("A match! - ");
+            Serial.print((char *)Scanned_BLE_Address.c_str());
+            Serial.print(" - ");
+            Serial.println(Scanned_BLE_Name);
+#endif
+          } else {
+            i++;
+          }
+        } // while searching for names
+      } // if auto-detecting printers
     }
 }; // class tpAdvertisedDeviceCallbacks
 #endif
@@ -232,7 +328,177 @@ uint8_t i;
       pData++;
    }
 } /* InvertBytes() */
+//
+// Return the measurements of a rectangle surrounding the given text string
+// rendered in the given font
+//
+void tpGetStringBox(GFXfont *pFont, char *szMsg, int *width, int *top, int *bottom)
+{
+int cx = 0;
+int c, i = 0;
+GFXglyph *pGlyph;
+int miny, maxy;
 
+   if (width == NULL || top == NULL || bottom == NULL || pFont == NULL || szMsg == NULL) return; // bad pointers
+   miny = 100; maxy = 0;
+   while (szMsg[i]) {
+      c = szMsg[i++];
+      if (c < pFont->first || c > pFont->last) // undefined character
+         continue; // skip it
+      c -= pFont->first; // first char of font defined
+      pGlyph = &pFont->glyph[c];
+      cx += pGlyph->xAdvance;
+      if (pGlyph->yOffset < miny) miny = pGlyph->yOffset;
+      if (pGlyph->height+pGlyph->yOffset > maxy) maxy = pGlyph->height+pGlyph->yOffset;
+   }
+   *width = cx;
+   *top = miny;
+   *bottom = maxy;
+} /* tpGetStringBox() */
+
+//
+// Draw a string of characters in a custom font into the gfx buffer
+//
+int tpDrawCustomText(GFXfont *pFont, int x, int y, char *szMsg)
+{
+int i, end_y, dx, dy, tx, ty, c, iBitOff;
+uint8_t *s, *d, bits, ucMask, ucClr, uc;
+GFXglyph glyph, *pGlyph;
+
+   if (pBackBuffer == NULL || pFont == NULL || x < 0 || y > bb_height)
+      return -1;
+   pGlyph = &glyph;
+
+   i = 0;
+   while (szMsg[i] && x < bb_width)
+   {
+      c = szMsg[i++];
+      if (c < pFont->first || c > pFont->last) // undefined character
+         continue; // skip it
+      c -= pFont->first; // first char of font defined
+      memcpy_P(&glyph, &pFont->glyph[c], sizeof(glyph));
+      dx = x + pGlyph->xOffset; // offset from character UL to start drawing
+      dy = y + pGlyph->yOffset;
+      s = pFont->bitmap + pGlyph->bitmapOffset; // start of bitmap data
+      // Bitmap drawing loop. Image is MSB first and each pixel is packed next
+      // to the next (continuing on to the next character line)
+      iBitOff = 0; // bitmap offset (in bits)
+      bits = uc = 0; // bits left in this font byte
+      end_y = dy + pGlyph->height;
+      if (dy < 0) { // skip these lines
+          iBitOff += (pGlyph->width * (-dy));
+          dy = 0;
+      }
+      for (ty=dy; ty<end_y && ty < bb_height; ty++) {
+         d = &pBackBuffer[ty * bb_pitch]; // internal buffer dest
+         for (tx=0; tx<pGlyph->width; tx++) {
+            if (uc == 0) { // need to read more font data
+               tx += bits; // skip any remaining 0 bits
+               uc = pgm_read_byte(&s[iBitOff>>3]); // get more font bitmap data
+               bits = 8 - (iBitOff & 7); // we might not be on a byte boundary
+               iBitOff += bits; // because of a clipped line
+               uc <<= (8-bits);
+               if (tx >= pGlyph->width) {
+                  while(tx >= pGlyph->width) { // rolls into next line(s)
+                     tx -= pGlyph->width;
+                     ty++;
+                  }
+                  if (ty >= end_y || ty >= bb_height) { // we're past the end
+                     tx = pGlyph->width;
+                     continue; // exit this character cleanly
+                  }
+                  d = &pBackBuffer[ty * bb_pitch];
+               }
+            } // if we ran out of bits
+            if (uc & 0x80) { // set pixel
+               ucMask = 0x80 >> ((dx+tx) & 7);
+               d[(dx+tx)>>3] |= ucMask;
+            }
+            bits--; // next bit
+            uc <<= 1;
+         } // for x
+      } // for y
+      x += pGlyph->xAdvance; // width of this character
+   } // while drawing characters
+   return 0;
+} /* tpDrawCustomText() */
+//
+// Print a string of characters in a custom font to the connected printer
+//
+int tpPrintCustomText(GFXfont *pFont, int startx, char *szMsg)
+{
+int i, x, y, end_y, dx, dy, tx, ty, c, iBitOff;
+int height;
+uint8_t *s, *d, bits, ucMask, ucClr, uc;
+GFXglyph glyph, *pGlyph;
+uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
+
+   if (pBackBuffer == NULL || pFont == NULL || x < 0)
+      return -1;
+   pGlyph = &glyph;
+
+   // Get the size of the rectangle enclosing the text
+   tpGetStringBox(pFont, szMsg, &tx, &ty, &height);
+   height = (height - ty) + 1;
+   tpPreGraphics(384, height);
+   for (y=0; y<height; y++)
+   {
+     i = 0;
+     x = startx;
+     memset(ucTemp, 0, sizeof(ucTemp));
+     while (szMsg[i] && x < 384)
+     {
+       c = szMsg[i++];
+       if (c < pFont->first || c > pFont->last) // undefined character
+         continue; // skip it
+       c -= pFont->first; // first char of font defined
+       memcpy_P(&glyph, &pFont->glyph[c], sizeof(glyph));
+       dx = x + pGlyph->xOffset; // offset from character UL to start drawing
+       dy = y + pGlyph->yOffset;
+       s = pFont->bitmap + pGlyph->bitmapOffset; // start of bitmap data
+       // Bitmap drawing loop. Image is MSB first and each pixel is packed next
+       // to the next (continuing on to the next character line)
+       iBitOff = 0; // bitmap offset (in bits)
+       bits = uc = 0; // bits left in this font byte
+       end_y = dy + pGlyph->height;
+       if (dy < 0) { // skip these lines
+          iBitOff += (pGlyph->width * (-dy));
+          dy = 0;
+       }
+       for (ty=dy; ty<end_y && ty < bb_height; ty++) {
+         for (tx=0; tx<pGlyph->width; tx++) {
+            if (uc == 0) { // need to read more font data
+               tx += bits; // skip any remaining 0 bits
+               uc = pgm_read_byte(&s[iBitOff>>3]); // get more font bitmap data
+               bits = 8 - (iBitOff & 7); // we might not be on a byte boundary
+               iBitOff += bits; // because of a clipped line
+               uc <<= (8-bits);
+               if (tx >= pGlyph->width) {
+                  while(tx >= pGlyph->width) { // rolls into next line(s)
+                     tx -= pGlyph->width;
+                     ty++;
+                  }
+                  if (ty >= end_y || ty >= bb_height) { // we're past the end
+                     tx = pGlyph->width;
+                     continue; // exit this character cleanly
+                  }
+               }
+            } // if we ran out of bits
+            if (uc & 0x80 && dy == y) { // set pixel if we're drawing this line
+               ucMask = 0x80 >> ((dx+tx) & 7);
+               ucTemp[(dx+tx)>>3] |= ucMask;
+            }
+            bits--; // next bit
+            uc <<= 1;
+         } // for tx
+      } // for ty
+      x += pGlyph->xAdvance; // width of this character
+    } // while drawing characters
+    tpSendScanline(ucTemp, 48); // send to printer 
+  } // for each line of output
+  tpPostGraphics();
+  return 0;
+} /* tpPrintCustomText() */
 //
 // Draw text into the graphics buffer
 //
@@ -420,23 +686,34 @@ int tpConnect(void)
 #ifdef HAL_ESP32_HAL_H_
     pClient  = BLEDevice::createClient();
 #ifdef DEBUG_OUTPUT
-    Serial.printf(" - Created client, connecting to %s", Scanned_BLE_Address.c_str());
+    Serial.printf(" - Created client, connecting to %s\n", Scanned_BLE_Address.c_str());
 #endif
     // Connect to the BLE Server.
     pClient->connect(*Server_BLE_Address);
+Serial.println("Came back from connect");
 //    if (!pClient->isConnected())
 //    {
 //      Serial.println("Connect failed");
 //      return false;
 //    }
     // Obtain a reference to the service we are after in the remote BLE server.
-    BLERemoteService* pRemoteService = pClient->getService(SERVICE_UUID);
+    BLERemoteService* pRemoteService = NULL;
+    if (ucPrinterType == PRINTER_PT210)
+       pRemoteService = pClient->getService(SERVICE_UUID0);
+    else if (ucPrinterType == PRINTER_CAT)
+       pRemoteService = pClient->getService(SERVICE_UUID1);
     if (pRemoteService != NULL)
     {
-//      Serial.println(" - Found our service");
+#ifdef DEBUG_OUTPUT
+      Serial.println(" - Found our service");
+#endif
       if (pClient->isConnected())
       {
-        pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA);
+        pRemoteCharacteristicData = NULL;
+        if (ucPrinterType == PRINTER_PT210)
+          pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA0);
+        else if (ucPrinterType == PRINTER_CAT)
+          pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA1);
         if (pRemoteCharacteristicData != NULL)
         {
 #ifdef DEBUG_OUTPUT
@@ -450,7 +727,9 @@ int tpConnect(void)
     else
     {
         bConnected = 0;
-//      Serial.println("data Service not found");
+#ifdef DEBUG_OUTPUT
+        Serial.println("data Service not found");
+#endif
     }
   return 0;
 #endif
@@ -473,28 +752,30 @@ int tpConnect(void)
         Serial.println("Connected!");
 #endif
         // you MUST discover the service or you won't be able to access it
-        if (peripheral.discoverService("18f0")) {
+        if (peripheral.discoverService(szServiceNames[ucPrinterType])) {
 #ifdef DEBUG_OUTPUT
-          Serial.println("0x18f0 discovered");
+          Serial.print("Service 0x");
+          Serial.print(szServiceNames[ucPrinterType]);
+          Serial.println(" discovered");
 #endif
         } else {
 #ifdef DEBUG_OUTPUT
-          Serial.println("0x18f0 disc failed");
+          Serial.println("Service discovery failed");
 #endif
           peripheral.disconnect();
           while (1);
         }
         // Obtain a reference to the service we are after in the remote BLE server.
 #ifdef DEBUG_OUTPUT
-        Serial.println("Trying to get service 18f0");
+        Serial.println("Trying to get service");
 #endif
-        prtService = peripheral.service("18f0"); // get the printer service
+        prtService = peripheral.service(szServiceNames[ucPrinterType]); // get the printer service
         if (prtService)
         {
 #ifdef DEBUG_OUTPUT
             Serial.println("Got the service");
 #endif
-            pRemoteCharacteristicData = prtService.characteristic("2af1");
+            pRemoteCharacteristicData = prtService.characteristic(szCharNames[ucPrinterType]);
             if (pRemoteCharacteristicData)
             {
 #ifdef DEBUG_OUTPUT
@@ -554,6 +835,34 @@ void tpDisconnect(void)
     }
 #endif
 } /* tpDisconnect() */
+//
+// Find the printer name from our supported names list
+//
+static uint8_t tpFindPrinterName(char *szName)
+{
+int i = 0;
+
+   while (szBLENames[i] != NULL) {
+     if (strcmp(szName, szBLENames[i]) == 0) { // found a supported printer
+     Serial.print("Found a match for ");
+     Serial.println(szName);
+     Serial.print("Printer type = ");
+     Serial.println(ucBLETypes[i], DEC);
+        return ucBLETypes[i];
+     } else {
+       i++;
+     }
+   } // while searching our name list
+   return 255; // invalid name
+} /* tpFindPrinterName() */
+//
+// Parameterless version
+// finds supported printers automatically
+//
+int tpScan(void)
+{
+  return tpScan("", 5);
+} /* tpScan() */
 
 //
 // Scan for compatible printers
@@ -568,8 +877,9 @@ unsigned long ulTime;
 int bFound = 0;
 int iLen = strlen(szName);
     
-    strcpy(szPrinterName, szName);
+    strcpy(szPrinterName, szName); // only use the given name
 #ifdef HAL_ESP32_HAL_H_
+    Scanned_BLE_Name[0] = 0;
     BLEDevice::init("ESP32");
     pBLEScan = BLEDevice::getScan(); //create new scan
     if (pBLEScan != NULL)
@@ -583,13 +893,30 @@ int iLen = strlen(szName);
     ulTime = millis();
     while (!bFound && (millis() - ulTime) < iSeconds*1000L)
     {
-       if (memcmp(Scanned_BLE_Name,szPrinterName, iLen) == 0) // found a device we want
+       if (iLen == 0 && Scanned_BLE_Name[0] != 0) { // looking for any supported printer
+          int i = 0;
+Serial.println("Trying to match name...");
+          while(!bFound && szBLENames[i] != NULL) {
+            if (strcmp(Scanned_BLE_Name, szBLENames[i]) == 0) {
+              pBLEScan->stop();
+              bFound = 1;
+              ucPrinterType = ucBLETypes[i];
+#ifdef DEBUG_OUTPUT
+              Serial.print("Found a compatible device - ");
+              Serial.println(Scanned_BLE_Name);
+#endif     
+            } else {
+              i++;
+            }
+          }
+       } else if (iLen > 0 && memcmp(Scanned_BLE_Name,szPrinterName, iLen) == 0) // found a device we want
        {
 #ifdef DEBUG_OUTPUT
            Serial.println("Found Device :-)");
 #endif
            pBLEScan->stop(); // stop scanning
            bFound = 1;
+           ucPrinterType = tpFindPrinterName(Scanned_BLE_Name);
        }
        else
        {
@@ -602,7 +929,14 @@ int iLen = strlen(szName);
     BLE.begin();
     // start scanning for the printer service UUID
 //    BLE.scanForUuid("49535343-FE7D-4AE5-8FA9-9FAFD205E455", true);
-    BLE.scanForName(szPrinterName, true);
+    if (iLen != 0) { // if there's a name given
+       Serial.println("Scanning for a specific name");
+       BLE.scanForName(szPrinterName, true);
+    }
+    else { // scan for EVERYTHING
+       Serial.println("Scanning without a specific name");
+       BLE.scan(true);
+    }
     ulTime = millis();
     while (!bFound && (millis() - ulTime) < (unsigned)iSeconds*1000UL)
     {
@@ -620,11 +954,30 @@ int iLen = strlen(szName);
             Serial.print(peripheral.advertisedServiceUuid());
             Serial.println();
 #endif
-            if (memcmp(peripheral.localName().c_str(), szPrinterName, iLen) == 0)
+            if (iLen > 0 && memcmp(peripheral.localName().c_str(), szPrinterName, iLen) == 0)
             { // found the one we're looking for
                // stop scanning
                 BLE.stopScan();
                 bFound = 1;
+                // determine the printer
+                ucPrinterType = tpFindPrinterName((char *)peripheral.localName().c_str());
+            } else if (iLen == 0 && strlen(peripheral.localName().c_str()) > 0) { // compare the name with our supported ones
+              int i = 0;
+              while (!bFound && szBLENames[i] != NULL) {
+                 if (strcmp(peripheral.localName().c_str(), szBLENames[i]) == 0) { // found a supported printer
+                   ucPrinterType = ucBLETypes[i];
+                   BLE.stopScan();
+                   bFound = 1; 
+#ifdef DEBUG_OUTPUT
+                   Serial.print("Found a matching device - ");
+                   Serial.println(peripheral.localName().c_str());
+                   Serial.print("Printer type = ");
+                   Serial.println(DEC, ucPrinterType);
+#endif
+                 } else {
+                   i++;
+                 }
+              } // while searching our name list
             }
         } // if peripheral located
         else
@@ -655,7 +1008,7 @@ int iLen = strlen(szName);
     Bluefruit.Scanner.setRxCallback(scan_callback);
     Bluefruit.Scanner.restartOnDisconnect(true);
 //    Bluefruit.Scanner.filterRssi(-72);
-    Bluefruit.Scanner.filterUuid(myService.uuid);
+//    Bluefruit.Scanner.filterUuid(myService.uuid);
     Bluefruit.Scanner.setInterval(160, 80);       // in units of 0.625 ms
     Bluefruit.Scanner.useActiveScan(true);        // Request scan response data
     Bluefruit.Scanner.start(0);                   // 0 = Don't stop
@@ -666,9 +1019,19 @@ int iLen = strlen(szName);
         delay(10);
     }
     Bluefruit.Scanner.stop();
-//    Serial.println("Stopping the scan");
+#ifdef DEBUG_OUTPUT
+    Serial.println("Stopping the scan");
+#endif
+  if (ucPrinterType == PRINTER_PT210) {
+    myService = BLEClientService(0x18f0);
+    myDataChar = BLEClientCharacteristic(0x2af1);
+  } else if (ucPrinterType == PRINTER_CAT) {
+    myService = BLEClientService(0xae30);
+    myDataChar = BLEClientCharacteristic(0xae01);
+  }
+
     myService.begin(); // start my client service
-    // Initialize client characteristics of VirtualDisplay.
+    // Initialize client characteristics
     // Note: Client Chars will be added to the last service that is begin()ed.
     myDataChar.setNotifyCallback(notify_callback);
     myDataChar.begin();
@@ -722,6 +1085,32 @@ uint8_t ucTemp[4];
 
 } /* tpSetFont() */
 //
+// Checksum
+//
+static uint8_t CheckSum(uint8_t *pData, int iLen)
+{
+int i;
+uint8_t cs = 0;
+
+    for (i=0; i<iLen; i++)
+        cs = cChecksumTable[(cs ^ pData[i])];
+    return cs;
+} /* CheckSum() */
+//
+// Set printer energy
+//
+static uint8_t *tpSetEnergy(int iEnergy)
+{
+static int8_t cEnergy[]  = {81, 120, -81, 0,2,0,-1,-1,0,-1};
+
+   cEnergy[6] = (int8_t)(iEnergy >> 8);
+   cEnergy[7] = (int8_t)(iEnergy & 0xff);
+   cEnergy[7] = CheckSum((uint8_t *)&cEnergy[6], 2); 
+   return (uint8_t *)cEnergy;
+
+} /* tpSetEnergy() */
+
+//
 // Print plain text immediately
 //
 // Pass a C-string (zero terminated char array)
@@ -733,7 +1122,11 @@ uint8_t ucTemp[4];
 int tpPrint(char *pString)
 {
 int iLen;
-  if (pString)
+
+  if (!bConnected)
+    return 0;
+
+  if (pString && ucPrinterType == PRINTER_PT210)
   {
     iLen = strlen(pString);
     tpWriteData((uint8_t*)pString, iLen);
@@ -759,27 +1152,63 @@ int tpPrintLine(char *pString)
   return 0;
 } /* tpPrintLine() */
 //
-// Send the graphics to the printer (must be connected over BLE first)
+// Send the preamble for transmitting graphics
 //
-void tpPrintBuffer(void)
+static void tpPreGraphics(int iWidth, int iHeight)
 {
-uint8_t *s, ucTemp[8];
-int y;
+uint8_t *s, ucTemp[16];
 
-  if (!bConnected)
-    return;
-// The printer command for graphics is laid out like this:
-// 0x1d 'v' '0' '0' xLow xHigh yLow yHigh <x/8 * y data bytes>
-  ucTemp[0] = 0x1d; ucTemp[1] = 'v';
-  ucTemp[2] = '0'; ucTemp[3] = '0';
-  ucTemp[4] = (bb_width+7)>>3; ucTemp[5] = 0;
-  ucTemp[6] = (uint8_t)bb_height; ucTemp[7] = (uint8_t)(bb_height >> 8);
-  tpWriteData(ucTemp, 8);
-// Now write the graphics data
-  s = pBackBuffer;
-  for (y=0; y<bb_height; y++)
-  {
-    tpWriteData(s, bb_pitch);
+  if (ucPrinterType == PRINTER_CAT) {
+    tpWriteData((uint8_t *)getDevState, sizeof(getDevState));
+    tpWriteData((uint8_t *)setQ200DPI, sizeof(setQ200DPI));
+    tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));
+
+    s = tpSetEnergy(12000);
+    tpWriteData(s, 10);
+    tpWriteData((uint8_t *)printImage, sizeof(printImage));
+    tpWriteData((uint8_t *)paperFeed, 9);
+  } else if (ucPrinterType == PRINTER_PT210) {
+  // The printer command for graphics is laid out like this:
+  // 0x1d 'v' '0' '0' xLow xHigh yLow yHigh <x/8 * y data bytes>
+    ucTemp[0] = 0x1d; ucTemp[1] = 'v';
+    ucTemp[2] = '0'; ucTemp[3] = '0';
+    ucTemp[4] = (iWidth+7)>>3; ucTemp[5] = 0;
+    ucTemp[6] = (uint8_t)iHeight; ucTemp[7] = (uint8_t)(iHeight >> 8);
+    tpWriteData(ucTemp, 8);
+  }
+
+} /* tpPreGraphics() */
+
+static void tpPostGraphics(void)
+{
+  if (ucPrinterType == PRINTER_CAT) {
+    tpWriteData((uint8_t *)paperFeed, 9);
+    tpWriteData((uint8_t *)setPaper, sizeof(setPaper));
+    tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
+    tpWriteData((uint8_t *)getDevState, sizeof(getDevState));
+  }
+} /* tpPostGraphics() */
+
+static void tpSendScanline(uint8_t *s, int iLen)
+{
+  if (ucPrinterType == PRINTER_CAT) {
+      uint8_t ucTemp[64+8];
+      ucTemp[0] = 0x51;
+      ucTemp[1] = 0x78;
+      ucTemp[2] = 0xa2; // gfx, uncompressed
+      ucTemp[3] = 0;
+      ucTemp[4] = (uint8_t)iLen; // data length
+      ucTemp[5] = 0;
+      for (i=0; i<iLen; i++) { // reverse the bits
+        ucTemp[6+i] = ucMirror[s[i]];
+      } // for each byte to mirror
+      ucTemp[6 + iLen] = 0;
+      ucTemp[6 + iLen + 1] = 0xff;
+      ucTemp[6 + iLen] = CheckSum(&ucTemp[6], iLen);
+      tpWriteData(ucTemp, 8 + iLen);
+  } else if (ucPrinterType == PRINTER_PT210) {
+      tpWriteData(s, iLen);
+  }
     // NB: To reliably send lots of data over BLE, you either use WRITE with
     // response (which waits for each packet to be acknowledged), or you add your
     // own delays to give it time to physically print the data.
@@ -788,12 +1217,33 @@ int y;
     // BLE adds between sending and receiving.
     // Without this delay, data will be lost and you may leave the printer
     // stuck waiting for a graphics command to finish.
-// Arduino Nano 33 BLE doesn't seem to allow writing without response
-#ifdef HAL_ESP32_HAL_H_
-    delay(1+(bb_pitch/8));
-#endif
+    if (!bWithResponse) {
+      delay(1+(bb_pitch/8));
+    }
+} /* tpSendScanline() */
+
+//
+// Send the graphics to the printer (must be connected over BLE first)
+//
+void tpPrintBuffer(void)
+{
+uint8_t *s, ucTemp[8];
+int y;
+int i;
+
+  if (!bConnected)
+    return;
+
+  tpPreGraphics(bb_width, bb_height);
+
+  // Print the graphics
+  s = pBackBuffer;
+  for (y=0; y<bb_height; y++) {
+    tpSendScanline(s, bb_pitch);
     s += bb_pitch;
-  }
+  } // for y
+
+  tpPostGraphics();
 } /* tpPrintBuffer() */
 //
 // Draw a line between 2 points
