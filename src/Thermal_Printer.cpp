@@ -25,14 +25,20 @@
 // Two sets of code - one for ESP32
 #ifdef HAL_ESP32_HAL_H_
 #include <BLEDevice.h>
+#define bleWriteValue(buffer, size, response) pRemoteCharacteristicData->writeValue(buffer, size, response);
+const bool noResponseSupported = true;
 #endif
 
 #ifdef ARDUINO_ARDUINO_NANO33BLE
 #include <ArduinoBLE.h>
+#define bleWriteValue(buffer, size, response) pRemoteCharacteristicData.writeValue(buffer, size, response);
+const bool noResponseSupported = true;
 #endif
 
 #ifdef ARDUINO_NRF52_ADAFRUIT
 #include <bluefruit.h>
+#define bleWriteValue(buffer, size, response) myDataChar.write((const void *)buffer, (uint16_t)size);
+const bool noResponseSupported = false;
 #endif
 
 #include "Thermal_Printer.h"
@@ -42,13 +48,17 @@ static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
 static int iCursorX = 0;
 static int iCursorY = 0;
-static uint8_t bWithResponse = 1; // default to wait for response
+static uint8_t bWithResponse = noResponseSupported ? MODE_WITHOUT_RESPONSE : 1; // default no wait if supported by API
 static uint8_t *pBackBuffer = NULL;
 static uint8_t bConnected = 0;
 static void tpWriteData(uint8_t *pData, int iLen);
 extern "C" {
 extern unsigned char ucFont[], ucBigFont[];
 };
+
+//these are printer dependent. please expand for each new printer
+const int PACKET_SIZE = 20;     //max bytes per packet (usually API should negotiate bigger packets)
+const int PACKET_DELAY = 4;     //millis to wait after each packet for the printer to take care. If printer gets stuck increase this. (5: conservative, 2: 50% fail, 4: 10% fail)
 
 #ifdef ARDUINO_NRF52_ADAFRUIT
 // Bluetooth support for Adafruit nrf52 boards
@@ -686,17 +696,19 @@ static void tpWriteData(uint8_t *pData, int iLen)
 {
     if (!bConnected) // || !pRemoteCharacteristicData)
         return;
-    // Write BLE data without response, otherwise the printer
-    // stutters and takes much longer to print
-#ifdef HAL_ESP32_HAL_H_
-    pRemoteCharacteristicData->writeValue(pData, iLen, bWithResponse);
-#endif
-#ifdef ARDUINO_ARDUINO_NANO33BLE
-    pRemoteCharacteristicData.writeValue(pData, iLen, bWithResponse);
-#endif
-#ifdef ARDUINO_NRF52_ADAFRUIT
-    myDataChar.write((const void *)pData, (uint16_t)iLen);
-#endif
+
+    //might also write empty packets. no clue if this is ever needed
+    for(int i = 0; i < iLen / PACKET_SIZE; i++)
+    {
+        bleWriteValue(pData, PACKET_SIZE, bWithResponse);
+        pData += PACKET_SIZE;
+        if(bWithResponse == MODE_WITHOUT_RESPONSE) delay(PACKET_DELAY);
+    }
+    if(iLen % PACKET_SIZE || iLen == 0)
+    {
+        bleWriteValue(pData, iLen % PACKET_SIZE, bWithResponse);
+        if(bWithResponse == MODE_WITHOUT_RESPONSE) delay(PACKET_DELAY);
+    }
 } /* tpWriteData() */
 //
 // Select one of 2 available text fonts along with attributes
@@ -776,24 +788,7 @@ int y;
   ucTemp[6] = (uint8_t)bb_height; ucTemp[7] = (uint8_t)(bb_height >> 8);
   tpWriteData(ucTemp, 8);
 // Now write the graphics data
-  s = pBackBuffer;
-  for (y=0; y<bb_height; y++)
-  {
-    tpWriteData(s, bb_pitch);
-    // NB: To reliably send lots of data over BLE, you either use WRITE with
-    // response (which waits for each packet to be acknowledged), or you add your
-    // own delays to give it time to physically print the data.
-    // In my testing, the forced delays actually goes faster since you don't
-    // have to wait for each packet to be acknowledged and the extra delays
-    // BLE adds between sending and receiving.
-    // Without this delay, data will be lost and you may leave the printer
-    // stuck waiting for a graphics command to finish.
-// Arduino Nano 33 BLE doesn't seem to allow writing without response
-#ifdef HAL_ESP32_HAL_H_
-    delay(1+(bb_pitch/8));
-#endif
-    s += bb_pitch;
-  }
+  tpWriteData(pBackBuffer, bb_pitch * bb_height);
 } /* tpPrintBuffer() */
 //
 // Draw a line between 2 points
