@@ -56,8 +56,9 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"MTP-2", (char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", NULL};
-const uint8_t ucBLETypes[] = {PRINTER_PT210, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT};
+const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", NULL};
+const uint8_t ucBLETypes[] = {PRINTER_PT210, PRINTER_PT210, PRINTER_PT210, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT};
+const int iPrinterWidth[] = {384, 576, 576, 384, 384, 384, 384};
 
 const char *szServiceNames[] = {(char *)"18f0", (char *)"ae30"}; // 16-bit UUID of the printer services we want
 const char *szCharNames[] = {(char *)"2af1", (char *)"ae01"}; // 16-bit UUID of printer data characteristics we want
@@ -289,7 +290,7 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
 // Provide a back buffer for your printer graphics
 // This allows you to manage the RAM used on
 // embedded platforms like Arduinos
-// The memory is laid out horizontally (384 pixels across = 48 bytes)
+// The memory is laid out horizontally (384/576 pixels across = 48/72 bytes)
 // So a 384x384 buffer would need to be 48x384 = 18432 bytes
 //
 void tpSetBackBuffer(uint8_t *pBuffer, int iWidth, int iHeight)
@@ -431,8 +432,11 @@ int i, x, y, end_y, dx, dy, tx, ty, c, iBitOff;
 int maxy, miny, height;
 uint8_t *s, *d, bits, ucMask, ucClr, uc;
 GFXglyph glyph, *pGlyph;
-uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
+uint8_t ucTemp[72]; // max width of 1 scan line (576 pixels)
+int iPrintWidth = iPrinterWidth[ucPrinterType];
 
+   if (!bConnected)
+      return -1;
    if (pBackBuffer == NULL || pFont == NULL || x < 0)
       return -1;
    pGlyph = &glyph;
@@ -441,13 +445,13 @@ uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
    tpGetStringBox(pFont, szMsg, &tx, &miny, &maxy);
    height = (maxy - miny) + 1;
 
-   tpPreGraphics(384, height);
+   tpPreGraphics(iPrintWidth, height);
    for (y=miny; y<=maxy; y++)
    {
      i = 0;
      x = startx;
      memset(ucTemp, 0, sizeof(ucTemp));
-     while (szMsg[i] && x < 384)
+     while (szMsg[i] && x < iPrintWidth)
      {
        c = szMsg[i++];
        if (c < pFont->first || c > pFont->last) // undefined character
@@ -1148,6 +1152,16 @@ int tpPrintLine(char *pString)
   }
   return 0;
 } /* tpPrintLine() */
+//
+// Return the printer width in pixels
+// The printer needs to be connected to get this info
+//
+int tpGetWidth(void)
+{
+   if (!bConnected)
+      return 0;
+   return iPrinterWidth[ucPrinterType];
+} /* tpGetWidth() */
 //
 // Feed the paper in scanline increments
 //

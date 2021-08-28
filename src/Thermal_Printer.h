@@ -54,6 +54,11 @@ typedef struct {
 } GFXfont;
 #endif // _ADAFRUIT_GFX_H
 //
+// Return the printer width in pixels
+// The printer needs to be connected to get this info
+//
+int tpGetWidth(void);
+//
 // Feed the paper in scanline increments
 //
 void tpFeed(int iLines);
