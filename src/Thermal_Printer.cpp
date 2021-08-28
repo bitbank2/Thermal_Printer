@@ -428,7 +428,7 @@ GFXglyph glyph, *pGlyph;
 int tpPrintCustomText(GFXfont *pFont, int startx, char *szMsg)
 {
 int i, x, y, end_y, dx, dy, tx, ty, c, iBitOff;
-int height;
+int maxy, miny, height;
 uint8_t *s, *d, bits, ucMask, ucClr, uc;
 GFXglyph glyph, *pGlyph;
 uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
@@ -438,10 +438,11 @@ uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
    pGlyph = &glyph;
 
    // Get the size of the rectangle enclosing the text
-   tpGetStringBox(pFont, szMsg, &tx, &ty, &height);
-   height = (height - ty) + 1;
+   tpGetStringBox(pFont, szMsg, &tx, &miny, &maxy);
+   height = (maxy - miny) + 1;
+
    tpPreGraphics(384, height);
-   for (y=0; y<height; y++)
+   for (y=miny; y<=maxy; y++)
    {
      i = 0;
      x = startx;
@@ -454,18 +455,14 @@ uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
        c -= pFont->first; // first char of font defined
        memcpy_P(&glyph, &pFont->glyph[c], sizeof(glyph));
        dx = x + pGlyph->xOffset; // offset from character UL to start drawing
-       dy = y + pGlyph->yOffset;
+       dy = /*y +*/ pGlyph->yOffset;
        s = pFont->bitmap + pGlyph->bitmapOffset; // start of bitmap data
        // Bitmap drawing loop. Image is MSB first and each pixel is packed next
        // to the next (continuing on to the next character line)
        iBitOff = 0; // bitmap offset (in bits)
        bits = uc = 0; // bits left in this font byte
        end_y = dy + pGlyph->height;
-       if (dy < 0) { // skip these lines
-          iBitOff += (pGlyph->width * (-dy));
-          dy = 0;
-       }
-       for (ty=dy; ty<end_y && ty < bb_height; ty++) {
+       for (ty=dy; ty<end_y; ty++) {
          for (tx=0; tx<pGlyph->width; tx++) {
             if (uc == 0) { // need to read more font data
                tx += bits; // skip any remaining 0 bits
@@ -484,7 +481,7 @@ uint8_t ucTemp[48]; // max width of 1 scan line (384 pixels)
                   }
                }
             } // if we ran out of bits
-            if (uc & 0x80 && dy == y) { // set pixel if we're drawing this line
+            if (uc & 0x80 && ty == y) { // set pixel if we're drawing this line
                ucMask = 0x80 >> ((dx+tx) & 7);
                ucTemp[(dx+tx)>>3] |= ucMask;
             }
@@ -691,11 +688,11 @@ int tpConnect(void)
     // Connect to the BLE Server.
     pClient->connect(*Server_BLE_Address);
 Serial.println("Came back from connect");
-//    if (!pClient->isConnected())
-//    {
-//      Serial.println("Connect failed");
-//      return false;
-//    }
+    if (!pClient->isConnected())
+    {
+      Serial.println("Connect failed");
+      return false;
+    }
     // Obtain a reference to the service we are after in the remote BLE server.
     BLERemoteService* pRemoteService = NULL;
     if (ucPrinterType == PRINTER_PT210)
@@ -1152,6 +1149,35 @@ int tpPrintLine(char *pString)
   return 0;
 } /* tpPrintLine() */
 //
+// Feed the paper in scanline increments
+//
+void tpFeed(int iLines)
+{
+uint8_t ucTemp[16];
+
+  if (!bConnected || iLines < 0 || iLines > 255)
+    return;
+  if (ucPrinterType == PRINTER_CAT) {
+     memcpy(ucTemp, paperFeed, sizeof(paperFeed));
+     ucTemp[6] = (uint8_t)iLines;
+     ucTemp[7] = cChecksumTable[iLines];
+     tpWriteData(ucTemp, 9);
+  } else if (ucPrinterType == PRINTER_PT210) {
+   // The PT-210 doesn't have a "feed-by-line" command
+   // so instead, we'll send 1 byte-wide graphics of a blank segment
+   int i;
+   for (i=0; i<iLines; i++) {
+     ucTemp[0] = 0x1d; ucTemp[1] = 'v';
+     ucTemp[2] = '0'; ucTemp[3] = '0';
+     ucTemp[4] = 1; ucTemp[5] = 0; // width = 1 byte
+     ucTemp[6] = 1; ucTemp[7] = 0; // height = 1 line
+     ucTemp[8] = 0; // 8 blank pixels
+     tpWriteData(ucTemp, 9);
+     delay(5);
+   }
+  }
+} /* tpFeed() */
+//
 // Send the preamble for transmitting graphics
 //
 static void tpPreGraphics(int iWidth, int iHeight)
@@ -1166,7 +1192,7 @@ uint8_t *s, ucTemp[16];
     s = tpSetEnergy(12000);
     tpWriteData(s, 10);
     tpWriteData((uint8_t *)printImage, sizeof(printImage));
-    tpWriteData((uint8_t *)paperFeed, 9);
+//    tpWriteData((uint8_t *)paperFeed, 9);
   } else if (ucPrinterType == PRINTER_PT210) {
   // The printer command for graphics is laid out like this:
   // 0x1d 'v' '0' '0' xLow xHigh yLow yHigh <x/8 * y data bytes>
@@ -1182,7 +1208,7 @@ uint8_t *s, ucTemp[16];
 static void tpPostGraphics(void)
 {
   if (ucPrinterType == PRINTER_CAT) {
-    tpWriteData((uint8_t *)paperFeed, 9);
+//    tpWriteData((uint8_t *)paperFeed, 9);
     tpWriteData((uint8_t *)setPaper, sizeof(setPaper));
     tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
     tpWriteData((uint8_t *)getDevState, sizeof(getDevState));

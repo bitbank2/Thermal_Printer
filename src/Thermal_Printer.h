@@ -54,6 +54,10 @@ typedef struct {
 } GFXfont;
 #endif // _ADAFRUIT_GFX_H
 //
+// Feed the paper in scanline increments
+//
+void tpFeed(int iLines);
+//
 // Return the measurements of a rectangle surrounding the given text string
 // rendered in the given font
 //
