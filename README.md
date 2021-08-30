@@ -8,8 +8,9 @@ bitbank@pobox.com<br>
 
 <br>
 This Arduino library allows you to easily generate text and graphics
-and send them to various BLE thermal printers. Since there are many different
-BLE APIs depending on the board manufacturer, I decided to support the three more
+and send them to various BLE thermal printers. I can support the printers that I currently own; if your model is not yet supported, the best way to encourage me to support it is to send me funds to buy it.<br>
+There are many different
+BLE APIs depending on the board manufacturer, I support the three more
 popular ones: ESP32, Adafruit and Arduino (e.g. Nano BLE 33). The two main features of
 thermal printers are supported by this code - plain text and dot addressable
 graphics. The graphics are treated like a display driver - you define a RAM buffer and draw text, dots, lines and bitmaps into it, then send it to the printer. Text output supports the various built-in font size+attribute options of some printers as well as Adafruit_GFX format bitmap fonts (sent as graphics).
@@ -27,6 +28,6 @@ Features<br>
 - Doesn't depend on any other 3rd party code<br>
 <br>
 
-If you find this code useful, please consider sending a donation.
+If you find this code useful, please consider becoming a Github Sponsor or sending a single donation.
 
 [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=SR4F44J2UR8S4)
