@@ -28,6 +28,14 @@ Features<br>
 - Doesn't depend on any other 3rd party code<br>
 <br>
 
+Here is a subjective chart of the printer models I've tested and are supported by this code. Please feel free to send me info about other models that work and additional comments about these printers.<br>
+
+<br>
+<p align="center">
+  <img width="939" height="203" src="https://github.com/bitbank2/Thermal_Printer/blob/master/printer_chart.jpg?raw=true">
+</p>
+<br>
+
 If you find this code useful, please consider becoming a Github Sponsor or sending a single donation.
 
 [![paypal](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=SR4F44J2UR8S4)
