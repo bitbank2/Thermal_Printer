@@ -38,7 +38,7 @@
 #include "Thermal_Printer.h"
 
 static char szPrinterName[32];
-volatile uint8_t ucPrinterType; // one of PRINTER_PT210, PRINTER_CAT, etc
+volatile uint8_t ucPrinterType; // one of PRINTER_MTP2, PRINTER_CAT, etc
 static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
 static int iCursorX = 0;
@@ -56,12 +56,12 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", "PeriPage",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_PT210, PRINTER_PT210, PRINTER_PT210, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGE};
-const int iPrinterWidth[] = {384, 576, 576, 384, 384, 384, 384, 576};
+const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", "PeriPage+",NULL};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGE};
+const int iPrinterWidth[] = {384, 576, 384, 576};
 
-const char *szServiceNames[] = {(char *)"18f0", (char *)"ae30", (char *)"ff00"}; // 16-bit UUID of the printer services we want
-const char *szCharNames[] = {(char *)"2af1", (char *)"ae01",(char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
+const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00"}; // 16-bit UUID of the printer services we want
+const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
 // Command sequences for the 'cat' printer
 const int8_t getDevState[] = {81, 120, -93, 0, 1, 0, 0, 0, -1};
 const int8_t setQ200DPI[] = {81, 120, -92, 0, 1, 0, 50, -98, -1};
@@ -700,7 +700,7 @@ Serial.println("Came back from connect");
     }
     // Obtain a reference to the service we are after in the remote BLE server.
     BLERemoteService* pRemoteService = NULL;
-    if (ucPrinterType == PRINTER_PT210)
+    if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3)
        pRemoteService = pClient->getService(SERVICE_UUID0);
     else if (ucPrinterType == PRINTER_CAT)
        pRemoteService = pClient->getService(SERVICE_UUID1);
@@ -714,7 +714,7 @@ Serial.println("Came back from connect");
       if (pClient->isConnected())
       {
         pRemoteCharacteristicData = NULL;
-        if (ucPrinterType == PRINTER_PT210)
+        if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA0);
         else if (ucPrinterType == PRINTER_CAT)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA1);
@@ -848,7 +848,7 @@ static uint8_t tpFindPrinterName(char *szName)
 {
 int i = 0;
 
-   szName[8] = 0; // Need to chop off the name after 'PeriPage'
+   szName[9] = 0; // Need to chop off the name after 'PeriPage+'
                   // because it includes 2 bytes of the BLE MAC address
    while (szBLENames[i] != NULL) {
      if (strcmp(szName, szBLENames[i]) == 0) { // found a supported printer
@@ -1015,7 +1015,7 @@ int iLen = strlen(szName);
 #ifdef DEBUG_OUTPUT
     Serial.println("Stopping the scan");
 #endif
-  if (ucPrinterType == PRINTER_PT210) {
+  if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
     myService = BLEClientService(0x18f0);
     myDataChar = BLEClientCharacteristic(0x2af1);
   } else if (ucPrinterType == PRINTER_CAT) {
@@ -1072,22 +1072,30 @@ static void tpWriteData(uint8_t *pData, int iLen)
 //
 void tpSetFont(int iFont, int iUnderline, int iDoubleWide, int iDoubleTall, int iEmphasized)
 {
-uint8_t ucTemp[4];
+uint8_t ucTemp[16];
+int i;
+
   if (iFont < FONT_12x24 || iFont > FONT_9x17) return;
 
-  ucTemp[0] = 0x1b; // ESC
-  ucTemp[1] = 0x21; // !
-  ucTemp[2] = (uint8_t)iFont;
-  if (iUnderline)
-     ucTemp[2] |= 0x80;
-  if (iDoubleWide)
-     ucTemp[2] |= 0x20;
-  if (iDoubleTall)
-     ucTemp[2] |= 0x10;
-  if (iEmphasized)
-     ucTemp[2] |= 0x8;
-  tpWriteData(ucTemp, 3);
-
+  if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE) {
+     i = 0;
+     if (ucPrinterType == PRINTER_PERIPAGE) {
+        ucTemp[i++] = 0x10; ucTemp[i++] = 0xff;
+        ucTemp[i++] = 0xfe; ucTemp[i++] = 0x01;
+     }
+     ucTemp[i++] = 0x1b; // ESC
+     ucTemp[i++] = 0x21; // !
+     ucTemp[i] = (uint8_t)iFont;
+     if (iUnderline)
+        ucTemp[i] |= 0x80;
+     if (iDoubleWide)
+        ucTemp[i] |= 0x20;
+     if (iDoubleTall)
+        ucTemp[i] |= 0x10;
+     if (iEmphasized)
+        ucTemp[i] |= 0x8;
+     tpWriteData(ucTemp, i+1);
+  }
 } /* tpSetFont() */
 //
 // Checksum
@@ -1131,18 +1139,17 @@ int iLen;
   if (!bConnected || pString == NULL)
     return 0;
 
-  if (ucPrinterType == PRINTER_PT210)
+  if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE)
   {
     iLen = strlen(pString);
+    if (ucPrinterType == PRINTER_PERIPAGE) {
+        uint8_t ucTemp[8];
+        ucTemp[0] = 0x10; ucTemp[1] = 0xff;
+        ucTemp[2] = 0xfe; ucTemp[3] = 0x01;
+        tpWriteData(ucTemp, 4);
+    }
     tpWriteData((uint8_t*)pString, iLen);
     return 1;
-  } else if (ucPrinterType == PRINTER_PERIPAGE) {
-    uint8_t ucTemp[128];
-    iLen = strlen(pString);
-    ucTemp[0] = 0x10; ucTemp[1] = 0xff;
-    ucTemp[2] = 0xfe; ucTemp[3] = 0x01;
-    memcpy(&ucTemp[4], pString, iLen);
-    tpWriteData(ucTemp, 4+iLen); // need to send cmd+data in one shot
   }
   return 0;
 } /* tpPrint() */
@@ -1157,7 +1164,7 @@ int tpPrintLine(char *pString)
 {
   if (tpPrint(pString))
   {
-    char cTemp[2] = {0xd, 0};
+    char cTemp[4] = {0xa, 0};
     tpPrint((char *)cTemp);
     return 1;
   }
@@ -1187,7 +1194,7 @@ uint8_t ucTemp[16];
      ucTemp[6] = (uint8_t)iLines;
      ucTemp[7] = cChecksumTable[iLines];
      tpWriteData(ucTemp, 9);
-  } else if (ucPrinterType == PRINTER_PT210) {
+  } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
    // The PT-210 doesn't have a "feed-by-line" command
    // so instead, we'll send 1 byte-wide graphics of a blank segment
    int i;
@@ -1214,11 +1221,11 @@ uint8_t *s, ucTemp[16];
 //    tpWriteData((uint8_t *)setQ200DPI, sizeof(setQ200DPI));
 //    tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));
 
-//    s = tpSetEnergy(iEnergy);
+//    s = tpSetEnergy(12000);
 //    tpWriteData(s, 10);
     tpWriteData((uint8_t *)printImage, sizeof(printImage));
 //    tpWriteData((uint8_t *)paperFeed, 9);
-  } else if (ucPrinterType == PRINTER_PT210) {
+  } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
   // The printer command for graphics is laid out like this:
   // 0x1d 'v' '0' '0' xLow xHigh yLow yHigh <x/8 * y data bytes>
     ucTemp[0] = 0x1d; ucTemp[1] = 'v';
@@ -1243,7 +1250,12 @@ uint8_t *s, ucTemp[16];
 
 static void tpPostGraphics(void)
 {
-   if (ucPrinterType == PRINTER_PERIPAGE) {
+   if (ucPrinterType == PRINTER_CAT) {
+//      tpWriteData((uint8_t *)setPaper, sizeof(setPaper));
+//      tpWriteData((uint8_t *)setPaper, sizeof(setPaper));
+//      tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
+//      tpWriteData((uint8_t *)getDevState, sizeof(getDevState));
+   } else if (ucPrinterType == PRINTER_PERIPAGE) {
       uint8_t ucTemp[] = {0x1b, 0x4a, 0x40, 0x10, 0xff, 0xfe, 0x45};
       tpWriteData(ucTemp, sizeof(ucTemp));
    }
@@ -1266,7 +1278,7 @@ static void tpSendScanline(uint8_t *s, int iLen)
       ucTemp[6 + iLen + 1] = 0xff;
       ucTemp[6 + iLen] = CheckSum(&ucTemp[6], iLen);
       tpWriteData(ucTemp, 8 + iLen);
-  } else if (ucPrinterType == PRINTER_PT210 || ucPrinterType == PRINTER_PERIPAGE) {
+  } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE) {
       tpWriteData(s, iLen);
   }
     // NB: To reliably send lots of data over BLE, you either use WRITE with
