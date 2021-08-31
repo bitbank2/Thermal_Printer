@@ -195,6 +195,7 @@ char szTemp[32];
        Bluefruit.Scanner.resume();
     } else { // we can stop scanning
       bNRFFound = 1;
+      ParseDeviceName(report->data.p_data, szPrinterName); // allow query by user
       Bluefruit.Scanner.stop();
       memcpy(&the_report, report, sizeof(ble_gap_evt_adv_report_t));
 #ifdef DEBUG_OUTPUT
@@ -275,6 +276,7 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
             Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
             ucPrinterType = ucType;
             strcpy(Scanned_BLE_Name, advertisedDevice.getName().c_str());
+            strcpy(szPrinterName, Scanned_BLE_Name); // allow user to query this
 #ifdef DEBUG_OUTPUT
             Serial.print("A match! - ");
             Serial.print((char *)Scanned_BLE_Address.c_str());
@@ -286,7 +288,6 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
     }
 }; // class tpAdvertisedDeviceCallbacks
 #endif
-
 
 // Provide a back buffer for your printer graphics
 // This allows you to manage the RAM used on
@@ -966,6 +967,7 @@ int iLen = strlen(szName);
               if (ucPrinterType < PRINTER_COUNT) {
                    BLE.stopScan();
                    bFound = 1; 
+                   strcpy(szPrinterName, peripheral.localName().c_str());
 #ifdef DEBUG_OUTPUT
                    Serial.print("Found a matching device - ");
                    Serial.println(peripheral.localName().c_str());
@@ -1170,6 +1172,16 @@ int tpPrintLine(char *pString)
   }
   return 0;
 } /* tpPrintLine() */
+//
+// Returns the BLE name of the connected printer
+// as a zero terminated c-string
+// Returns NULL if not connected
+//
+char *tpGetName(void)
+{
+   if (!bConnected) return NULL;
+   return szPrinterName;
+} /* tpGetName() */
 //
 // Return the printer width in pixels
 // The printer needs to be connected to get this info

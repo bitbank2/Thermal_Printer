@@ -61,6 +61,12 @@ typedef struct {
 //
 int tpGetWidth(void);
 //
+// Returns the BLE name of the connected printer
+// as a zero terminated c-string
+// Returns NULL if not connected
+//
+char *tpGetName(void);
+
 // Feed the paper in scanline increments
 //
 void tpFeed(int iLines);
