@@ -24,7 +24,67 @@
 #define FONT_LARGE 1
 #define FONT_12x24 0
 #define FONT_9x17  1
+
+enum {
+  PRINTER_MTP2=0,
+  PRINTER_MTP3,
+  PRINTER_CAT,
+  PRINTER_PERIPAGEPLUS,
+  PRINTER_PERIPAGE,
+  PRINTER_COUNT
+};
+
+// Proportional font data taken from Adafruit_GFX library
+/// Font data stored PER GLYPH
+#if !defined( _ADAFRUIT_GFX_H ) && !defined( _GFXFONT_H_ )
+#define _GFXFONT_H_
+typedef struct {
+  uint16_t bitmapOffset; ///< Pointer into GFXfont->bitmap
+  uint8_t width;         ///< Bitmap dimensions in pixels
+  uint8_t height;        ///< Bitmap dimensions in pixels
+  uint8_t xAdvance;      ///< Distance to advance cursor (x axis)
+  int8_t xOffset;        ///< X dist from cursor pos to UL corner
+  int8_t yOffset;        ///< Y dist from cursor pos to UL corner
+} GFXglyph;
+
+/// Data stored for FONT AS A WHOLE
+typedef struct {
+  uint8_t *bitmap;  ///< Glyph bitmaps, concatenated
+  GFXglyph *glyph;  ///< Glyph array
+  uint8_t first;    ///< ASCII extents (first char)
+  uint8_t last;     ///< ASCII extents (last char)
+  uint8_t yAdvance; ///< Newline distance (y axis)
+} GFXfont;
+#endif // _ADAFRUIT_GFX_H
 //
+// Return the printer width in pixels
+// The printer needs to be connected to get this info
+//
+int tpGetWidth(void);
+//
+// Returns the BLE name of the connected printer
+// as a zero terminated c-string
+// Returns NULL if not connected
+//
+char *tpGetName(void);
+
+// Feed the paper in scanline increments
+//
+void tpFeed(int iLines);
+//
+// Return the measurements of a rectangle surrounding the given text string
+// rendered in the given font
+//
+void tpGetStringBox(GFXfont *pFont, char *szMsg, int *width, int *top, int *bottom);
+//
+// Draw a string of characters in a custom font into the gfx buffer
+//
+int tpDrawCustomText(GFXfont *pFont, int x, int y, char *szMsg);
+//
+// Print a string of characters in a custom font to the connected printer
+//
+int tpPrintCustomText(GFXfont *pFont, int x, char *szMsg);
+
 // Select one of 2 available text fonts along with attributes
 // FONT_12x24 or FONT_9x17
 // Each option is either 0 (disabled) or 1 (enabled)
@@ -105,6 +165,11 @@ void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
 // iSeconds = how many seconds to scan for devices
 //
 int tpScan(const char *szName, int iSeconds);
+//
+// Parameterless version
+// finds supported printers automatically
+//
+int tpScan(void);
 //
 // After a successful scan, connect to the printer
 // returns 1 if successful, 0 for failure
