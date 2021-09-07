@@ -392,7 +392,7 @@ GFXglyph glyph, *pGlyph;
           iBitOff += (pGlyph->width * (-dy));
           dy = 0;
       }
-      for (ty=dy; ty<end_y && ty < bb_height; ty++) {
+      for (ty=dy; ty<=end_y && ty < bb_height; ty++) {
          d = &pBackBuffer[ty * bb_pitch]; // internal buffer dest
          for (tx=0; tx<pGlyph->width; tx++) {
             if (uc == 0) { // need to read more font data
@@ -406,7 +406,7 @@ GFXglyph glyph, *pGlyph;
                      tx -= pGlyph->width;
                      ty++;
                   }
-                  if (ty >= end_y || ty >= bb_height) { // we're past the end
+                  if (ty >= end_y) { // we're past the end
                      tx = pGlyph->width;
                      continue; // exit this character cleanly
                   }
@@ -439,7 +439,7 @@ int iPrintWidth = iPrinterWidth[ucPrinterType];
 
    if (!bConnected)
       return -1;
-   if (pBackBuffer == NULL || pFont == NULL || x < 0)
+   if (pFont == NULL || x < 0)
       return -1;
    pGlyph = &glyph;
 
@@ -468,7 +468,7 @@ int iPrintWidth = iPrinterWidth[ucPrinterType];
        iBitOff = 0; // bitmap offset (in bits)
        bits = uc = 0; // bits left in this font byte
        end_y = dy + pGlyph->height;
-       for (ty=dy; ty<end_y; ty++) {
+       for (ty=dy; ty<=end_y; ty++) {
          for (tx=0; tx<pGlyph->width; tx++) {
             if (uc == 0) { // need to read more font data
                tx += bits; // skip any remaining 0 bits
@@ -481,7 +481,7 @@ int iPrintWidth = iPrinterWidth[ucPrinterType];
                      tx -= pGlyph->width;
                      ty++;
                   }
-                  if (ty >= end_y || ty >= bb_height) { // we're past the end
+                  if (ty >= end_y) { // we're past the end
                      tx = pGlyph->width;
                      continue; // exit this character cleanly
                   }
@@ -1268,8 +1268,8 @@ static void tpPostGraphics(void)
 //      tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
 //      tpWriteData((uint8_t *)getDevState, sizeof(getDevState));
    } else if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
-      uint8_t ucTemp[] = {0x1b, 0x4a, 0x40, 0x10, 0xff, 0xfe, 0x45};
-      tpWriteData(ucTemp, sizeof(ucTemp));
+ //     uint8_t ucTemp[] = {0x1b, 0x4a, 0x40, 0x10, 0xff, 0xfe, 0x45};
+ //     tpWriteData(ucTemp, sizeof(ucTemp));
    }
 } /* tpPostGraphics() */
 
