@@ -14,7 +14,7 @@ BLE APIs depending on the board manufacturer, I support the three more
 popular ones: ESP32, Adafruit and Arduino (e.g. Nano BLE 33). The two main features of
 thermal printers are supported by this code - plain text and dot addressable
 graphics. The graphics are treated like a display driver - you define a RAM buffer and draw text, dots, lines and bitmaps into it, then send it to the printer. Text output supports the various built-in font size+attribute options of some printers as well as Adafruit_GFX format bitmap fonts (sent as graphics).
-See the include (.H) file for a description of each function.
+See the Wiki: https://github.com/bitbank2/Thermal_Printer/wiki/Public-API for a description of each function.
 <br>
 
 <br>
