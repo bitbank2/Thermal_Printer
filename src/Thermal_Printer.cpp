@@ -43,7 +43,7 @@ static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
 static int iCursorX = 0;
 static int iCursorY = 0;
-static uint8_t bWithResponse = 1; // default to wait for response
+static uint8_t bWithResponse = 0; // default to not wait for a response
 static uint8_t *pBackBuffer = NULL;
 static uint8_t bConnected = 0;
 static void tpWriteData(uint8_t *pData, int iLen);
@@ -444,10 +444,12 @@ int iPrintWidth = iPrinterWidth[ucPrinterType];
    pGlyph = &glyph;
 
    // Get the size of the rectangle enclosing the text
-   tpGetStringBox(pFont, szMsg, &tx, &miny, &maxy);
-   height = (maxy - miny) + 1;
+//   tpGetStringBox(pFont, szMsg, &tx, &miny, &maxy);
+//   height = (maxy - miny) + 1;
 
-   tpPreGraphics(iPrintWidth, height);
+   tpPreGraphics(iPrintWidth, pFont->yAdvance);
+   miny = 0 - (pFont->yAdvance * 2)/3; // 2/3 of char is above the baseline
+   maxy = pFont->yAdvance + miny;
    for (y=miny; y<=maxy; y++)
    {
      i = 0;
@@ -1050,12 +1052,13 @@ static void tpWriteData(uint8_t *pData, int iLen)
     // Write BLE data without response, otherwise the printer
     // stutters and takes much longer to print
 #ifdef HAL_ESP32_HAL_H_
-    // for some reason the ESP32 sends some corrupt data if we ask it
-    // to write more than 48 bytes at a time
-    while (iLen > 48) {
-       pRemoteCharacteristicData->writeValue(pData, 48, bWithResponse);
-       pData += 48;
-       iLen -= 48;
+    // For some reason the ESP32 sends some corrupt data if we ask it
+    // to write more than 20 bytes at a time (used to be 48)
+    while (iLen > 20) {
+       pRemoteCharacteristicData->writeValue(pData, 20, bWithResponse);
+       if (!bWithResponse) delay(4);
+       pData += 20;
+       iLen -= 20;
     }
     if (iLen) {
       pRemoteCharacteristicData->writeValue(pData, iLen, bWithResponse);
@@ -1301,9 +1304,12 @@ static void tpSendScanline(uint8_t *s, int iLen)
     // BLE adds between sending and receiving.
     // Without this delay, data will be lost and you may leave the printer
     // stuck waiting for a graphics command to finish.
+    // For the ESP32, we break up the packets and add the delays in tpWriteData()
+#ifndef HAL_ESP32_HAL_H_
     if (!bWithResponse) {
       delay(1+(bb_pitch/8));
     }
+#endif
 } /* tpSendScanline() */
 
 //

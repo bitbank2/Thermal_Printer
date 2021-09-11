@@ -352,7 +352,7 @@ void setup() {
     while (1) {};
   }
   Serial.println((char *)"Scanning for BLE printer");
-  if (tpScan("MTP-2",5))
+  if (tpScan())
   {
     Serial.println((char *)"Found a printer!, connecting...");
     if (tpConnect())
