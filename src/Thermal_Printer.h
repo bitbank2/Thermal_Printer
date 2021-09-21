@@ -26,6 +26,37 @@
 #define FONT_9x17  1
 
 enum {
+  ALIGN_LEFT=0x30,
+  ALIGN_CENTER=0x31,
+  ALIGN_RIGHT=0x32
+};
+
+enum {
+  BARCODE_TEXT_NONE=0x30,
+  BARCODE_TEXT_ABOVE=0x31,
+  BARCODE_TEXT_BELOW=0x32,
+  BARCODE_TEXT_BOTH=0x33
+};
+
+enum {
+  BARCODE_UPCA=0,
+  BARCODE_UPCE=0x01,
+  BARCODE_EAN13=0x02,
+  BARCODE_EAN8=0x03,
+  BARCODE_CODE39=0x04,
+  BARCODE_ITF=0x05,
+  BARCODE_CODABAR=0x06,
+  BARCODE_CODE93=0x48,
+  BARCODE_CODE128=0x49,
+  BARCODE_GS1_128=0x50,
+  BARCODE_GS1_DATABAR_OMNI=0x51,
+  BARCODE_GS1_DATABAR_TRUNCATED=0x52,
+  BARCODE_GS1_DATABAR_LIMITED=0x53,
+  BARCODE_GS1_DATABAR_EXPANDED=0x54,
+  BARCODE_CODE128_AUTO=0x55
+};
+
+enum {
   PRINTER_MTP2=0,
   PRINTER_MTP3,
   PRINTER_CAT,
@@ -165,6 +196,19 @@ void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
 // iSeconds = how many seconds to scan for devices
 //
 int tpScan(const char *szName, int iSeconds);
+//
+// Set the text and barcode alignment
+// Use ALIGN_LEFT, ALIGN_CENTER or ALIGN_RIGHT
+//
+void tpAlign(uint8_t ucAlign);
+//
+// Print a 2D (QR) barcode
+//
+void tpQRCode(char *);
+//
+// Print a 1D barcode
+//
+void tp1DBarcode(int iType, int iHeight, char *szData, int iTextPos);
 //
 // Parameterless version
 // finds supported printers automatically

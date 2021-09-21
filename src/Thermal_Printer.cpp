@@ -56,10 +56,10 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", "PeriPage+","PeriPage_",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE};
+const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_",NULL};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384};
-
+const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00"}; // 16-bit UUID of the printer services we want
 const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
 // Command sequences for the 'cat' printer
@@ -68,11 +68,11 @@ const int8_t setQ200DPI[] = {81, 120, -92, 0, 1, 0, 50, -98, -1};
 const int8_t latticeStart[] = {81, 120, -90, 0, 11, 0, -86, 85, 23,
                         56, 68, 95, 95, 95, 68, 56, 44, -95, -1};
 const int8_t latticeEnd[] = {81, 120, -90, 0, 11, 0, -86, 85, 23, 0, 0, 0, 0, 0, 0, 0, 23, 17, -1};
-const int8_t paperFeed[] = {81, 120, -67, 0, 1, 0, 30, 90, -1};
+const uint8_t paperFeed[] = {0x51, 0x78, 0xa1, 0, 2, 0, 30, 90, 0xff, 0xff};
 int i;
 const int8_t setPaper[] = {81, 120, -95, 0, 2, 0, 48, 0, -7, -1};
 const int8_t printImage[] = {81, 120, -66, 0, 1, 0, 0, 0, -1};
-
+const int8_t printText[] = {81, 120, -66, 0, 1, 0, 1, 7, -1};
 const int8_t cChecksumTable[] = {0, 7, 14, 9, 28, 27, 18, 21, 56, 63, 54, 49, 36, 35, 42, 45, 112, 119, 126, 121, 108, 107, 98, 101, 72, 79, 70, 65, 84, 83, 90, 93, -32, -25, -18, -23, -4, -5, -14, -11, -40, -33, -42, -47, -60, -61, -54, -51, -112, -105, -98, -103, -116, -117, -126, -123, -88, -81, -90, -95, -76, -77, -70, -67, -57, -64, -55, -50, -37, -36, -43, -46, -1, -8, -15, -10, -29, -28, -19, -22, -73, -80, -71, -66, -85, -84, -91, -94, -113, -120, -127, -122, -109, -108, -99, -102, 39, 32, 41, 46, 59, 60, 53, 50, 31, 24, 17, 22, 3, 4, 13, 10, 87, 80, 89, 94, 75, 76, 69, 66, 111, 104, 97, 102, 115, 116,
                      125, 122, -119, -114, -121, -128, -107, -110, -101, -100, -79, -74, -65, -72, -83, -86, -93, -92, -7, -2, -9, -16, -27, -30, -21, -20, -63, -58, -49, -56, -35, -38, -45, -44, 105, 110, 103, 96, 117, 114, 123, 124, 81, 86, 95, 88, 77, 74, 67, 68, 25, 30, 23, 16, 5, 2, 11, 12, 33, 38, 47, 40, 61, 58, 51, 52, 78, 73, 64, 71, 82, 85, 92, 91, 118, 113, 120, 127, 106, 109, 100, 99, 62, 57, 48, 55, 34, 37, 44, 43, 6, 1, 8, 15, 26, 29, 20, 19, -82, -87, -96, -89, -78, -75, -68, -69, -106, -111, -104, -97, -118, -115, -124, -125, -34, -39, -48, -41, -62, -59, -52, -53, -26, -31, -24, -17, -6, -3, -12, -13};
 
@@ -1127,6 +1127,87 @@ static int8_t cEnergy[]  = {81, 120, -81, 0,2,0,-1,-1,0,-1};
    return (uint8_t *)cEnergy;
 
 } /* tpSetEnergy() */
+//
+// Set the text and barcode alignment
+// Use ALIGN_LEFT, ALIGN_CENTER or ALIGN_RIGHT
+//
+void tpAlign(uint8_t ucAlign)
+{
+uint8_t ucTemp[4];
+
+    if (!bConnected || ucAlign < ALIGN_LEFT || ucAlign > ALIGN_RIGHT)
+       return; // invalid
+    ucTemp[0] = 0x1b; // ESC
+    ucTemp[1] = 'a';
+    ucTemp[2] = ucAlign;
+    tpWriteData(ucTemp, 3);
+
+} /* tpAlign() */
+
+//
+// Print a 2D (QR) code
+//
+void tpQRCode(char *szText)
+{
+// QR Code: Select the model
+//              Hex     1D      28      6B      04      00      31      41      n1(x32)     n2(x00) - size of model
+// set n1 [49 x31, model 1] [50 x32, model 2] [51 x33, micro qr code]
+// https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=140
+uint8_t modelQR[] = {0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00};
+
+// QR Code: Set the size of module
+// Hex      1D      28      6B      03      00      31      43      n
+// n depends on the printer
+// https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=141
+uint8_t sizeQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x03};
+
+//          Hex     1D      28      6B      03      00      31      45      n
+// Set n for error correction [48 x30 -> 7%] [49 x31-> 15%] [50 x32 -> 25%] [51 x33 -> 30%]
+// https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=142
+uint8_t errorQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31};
+// QR Code: Store the data in the symbol storage area
+// Hex      1D      28      6B      pL      pH      31      50      30      d1...dk
+// https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=143
+//                        1D          28          6B         pL          pH  cn(49->x31) fn(80->x50) m(48->x30) d1…dk
+uint8_t storeQR[] = {0x1d, 0x28, 0x6b, 0x00 /*store_pL*/, 0x00/*store_pH*/, 0x31, 0x50, 0x30};
+// QR Code: Print the symbol data in the symbol storage area
+// Hex      1D      28      6B      03      00      31      51      m
+// https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=144
+uint8_t printQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30};
+int store_len = strlen(szText) + 3;
+uint8_t store_pL = (uint8_t)(store_len & 0xff);
+uint8_t store_pH = (uint8_t)(store_len / 256);
+
+    if (ucPrinterType != PRINTER_MTP2 && ucPrinterType != PRINTER_MTP3)
+       return; // only supported on these
+    storeQR[3] = store_pL; storeQR[4] = store_pH;
+//    tpWriteData(modelQR, sizeof(modelQR));
+    tpWriteData(sizeQR, sizeof(sizeQR));
+    tpWriteData(errorQR, sizeof(errorQR));
+    tpWriteData(storeQR, sizeof(storeQR));
+    tpWriteData((uint8_t *)szText, store_len);
+    tpWriteData(printQR, sizeof(printQR));
+
+} /* tpQRCode() */
+//
+// Print a 1D barcode
+//
+void tp1DBarcode(int iType, int iHeight, char *szData, int iTextPos)
+{
+uint8_t ucTemp[128];
+uint8_t len;
+int i=0;
+
+   if (!bConnected || szData == NULL) return;
+   len = (uint8_t)strlen(szData);
+   ucTemp[i++] = 0x1d; ucTemp[i++] = 0x48; ucTemp[i++] = (uint8_t)iTextPos;
+   ucTemp[i++] = 0x1d; ucTemp[i++] = 0x68; ucTemp[i++] = (uint8_t)iHeight;
+   ucTemp[i++] = 0x1d; ucTemp[i++] = 0x77; ucTemp[i++] = 2; // width multiplier
+   ucTemp[i++] = 0x1d; ucTemp[i++] = 0x6b; ucTemp[i++] = (uint8_t)iType;
+   ucTemp[i++] = len;
+   memcpy(&ucTemp[i], szData, len);
+   tpWriteData(ucTemp, len + i);
+} /* tp1DBarcode() */
 
 //
 // Print plain text immediately
@@ -1144,6 +1225,23 @@ int iLen;
   if (!bConnected || pString == NULL)
     return 0;
 
+  if (ucPrinterType == PRINTER_CAT) {
+     uint8_t ucTemp[128];
+     uint8_t len = (uint8_t)strlen(pString);
+     tpWriteData((uint8_t *)printText, sizeof(printText));
+      ucTemp[0] = 0x51;
+      ucTemp[1] = 0x78;
+      ucTemp[2] = 0xa2; // data, uncompressed
+      ucTemp[3] = 0;
+      ucTemp[4] = (uint8_t)len; // data length
+      ucTemp[5] = 0;
+      for (int i=0; i<len; i++)
+        ucTemp[6+i] = ucMirror[pString[i]];
+      ucTemp[6 + len + 1] = 0xff;
+      ucTemp[6 + len] = CheckSum(&ucTemp[6], len);
+      tpWriteData(ucTemp, 8 + len);
+     return 1;
+  }
   if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
   {
     iLen = strlen(pString);
@@ -1206,9 +1304,11 @@ uint8_t ucTemp[16];
     return;
   if (ucPrinterType == PRINTER_CAT) {
      memcpy(ucTemp, paperFeed, sizeof(paperFeed));
-     ucTemp[6] = (uint8_t)iLines;
-     ucTemp[7] = cChecksumTable[iLines];
-     tpWriteData(ucTemp, 9);
+     iLines >>= 2; // uses a different measurement of lines to feed
+     ucTemp[6] = (uint8_t)(iLines >> 8);
+     ucTemp[7] = (uint8_t)iLines;
+     ucTemp[8] = CheckSum(&ucTemp[6], 2);
+     tpWriteData(ucTemp, sizeof(paperFeed));
   } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
    // The PT-210 doesn't have a "feed-by-line" command
    // so instead, we'll send 1 byte-wide graphics of a blank segment
