@@ -56,12 +56,12 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE};
-const int iPrinterWidth[] = {384, 576, 384, 576, 384};
+const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_PHOMEMO};
+const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
-const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00"}; // 16-bit UUID of the printer services we want
-const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
+const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
+const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02", (char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
 // Command sequences for the 'cat' printer
 const int8_t getDevState[] = {81, 120, -93, 0, 1, 0, 0, 0, -1};
 const int8_t setQ200DPI[] = {81, 120, -92, 0, 1, 0, 50, -98, -1};
@@ -707,7 +707,7 @@ Serial.println("Came back from connect");
        pRemoteService = pClient->getService(SERVICE_UUID0);
     else if (ucPrinterType == PRINTER_CAT)
        pRemoteService = pClient->getService(SERVICE_UUID1);
-    else if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
+    else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
        pRemoteService = pClient->getService(SERVICE_UUID2);
     if (pRemoteService != NULL)
     {
@@ -721,7 +721,7 @@ Serial.println("Came back from connect");
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA0);
         else if (ucPrinterType == PRINTER_CAT)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA1);
-        else if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
+        else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA2);
         if (pRemoteCharacteristicData != NULL)
         {
@@ -1082,7 +1082,7 @@ int i;
 
   if (iFont < FONT_12x24 || iFont > FONT_9x17) return;
 
-  if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
+  if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
      i = 0;
      if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
         ucTemp[i++] = 0x10; ucTemp[i++] = 0xff;
@@ -1178,7 +1178,7 @@ int store_len = strlen(szText) + 3;
 uint8_t store_pL = (uint8_t)(store_len & 0xff);
 uint8_t store_pH = (uint8_t)(store_len / 256);
 
-    if (ucPrinterType != PRINTER_MTP2 && ucPrinterType != PRINTER_MTP3)
+    if (ucPrinterType != PRINTER_FOMEMO && ucPrinterType != PRINTER_MTP2 && ucPrinterType != PRINTER_MTP3)
        return; // only supported on these
     storeQR[3] = store_pL; storeQR[4] = store_pH;
 //    tpWriteData(modelQR, sizeof(modelQR));
@@ -1242,7 +1242,7 @@ int iLen;
       tpWriteData(ucTemp, 8 + len);
      return 1;
   }
-  if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
+  if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
   {
     iLen = strlen(pString);
     if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
@@ -1309,7 +1309,7 @@ uint8_t ucTemp[16];
      ucTemp[7] = (uint8_t)iLines;
      ucTemp[8] = CheckSum(&ucTemp[6], 2);
      tpWriteData(ucTemp, sizeof(paperFeed));
-  } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
+  } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
    // The PT-210 doesn't have a "feed-by-line" command
    // so instead, we'll send 1 byte-wide graphics of a blank segment
    int i;
@@ -1340,7 +1340,7 @@ uint8_t *s, ucTemp[16];
 //    tpWriteData(s, 10);
     tpWriteData((uint8_t *)printImage, sizeof(printImage));
 //    tpWriteData((uint8_t *)paperFeed, 9);
-  } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
+  } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
   // The printer command for graphics is laid out like this:
   // 0x1d 'v' '0' '0' xLow xHigh yLow yHigh <x/8 * y data bytes>
     ucTemp[0] = 0x1d; ucTemp[1] = 'v';
@@ -1393,7 +1393,7 @@ static void tpSendScanline(uint8_t *s, int iLen)
       ucTemp[6 + iLen + 1] = 0xff;
       ucTemp[6 + iLen] = CheckSum(&ucTemp[6], iLen);
       tpWriteData(ucTemp, 8 + iLen);
-  } else if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
+  } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3 || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
       tpWriteData(s, iLen);
   }
     // NB: To reliably send lots of data over BLE, you either use WRITE with
