@@ -56,8 +56,8 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_PHOMEMO};
+const char *szBLENames[] = {(char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"GB03", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_",NULL};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
@@ -1121,9 +1121,9 @@ static uint8_t *tpSetEnergy(int iEnergy)
 {
 static int8_t cEnergy[]  = {81, 120, -81, 0,2,0,-1,-1,0,-1};
 
-   cEnergy[6] = (int8_t)(iEnergy >> 8);
-   cEnergy[7] = (int8_t)(iEnergy & 0xff);
-   cEnergy[7] = CheckSum((uint8_t *)&cEnergy[6], 2); 
+   cEnergy[6] = (int8_t)(iEnergy & 0xFF);
+   cEnergy[7] = (int8_t)(iEnergy >> 8);
+   cEnergy[8] = CheckSum((uint8_t *)&cEnergy[6], 2); 
    return (uint8_t *)cEnergy;
 
 } /* tpSetEnergy() */
@@ -1305,8 +1305,8 @@ uint8_t ucTemp[16];
   if (ucPrinterType == PRINTER_CAT) {
      memcpy(ucTemp, paperFeed, sizeof(paperFeed));
      iLines >>= 2; // uses a different measurement of lines to feed
-     ucTemp[6] = (uint8_t)(iLines >> 8);
-     ucTemp[7] = (uint8_t)iLines;
+     ucTemp[6] = (uint8_t)(iLines & 0xFF);
+     ucTemp[7] = (uint8_t)(iLines >> 8);
      ucTemp[8] = CheckSum(&ucTemp[6], 2);
      tpWriteData(ucTemp, sizeof(paperFeed));
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
