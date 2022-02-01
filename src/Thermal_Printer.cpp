@@ -1121,8 +1121,8 @@ static uint8_t *tpSetEnergy(int iEnergy)
 {
 static int8_t cEnergy[]  = {81, 120, -81, 0,2,0,-1,-1,0,-1};
 
-   cEnergy[6] = (int8_t)(iEnergy >> 8);
-   cEnergy[7] = (int8_t)(iEnergy & 0xff);
+   cEnergy[6] = (int8_t)(iEnergy & 0xFF);
+   cEnergy[7] = (int8_t)(iEnergy >> 8);
    cEnergy[8] = CheckSum((uint8_t *)&cEnergy[6], 2); 
    return (uint8_t *)cEnergy;
 
