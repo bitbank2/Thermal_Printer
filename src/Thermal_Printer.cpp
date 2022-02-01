@@ -1123,7 +1123,7 @@ static int8_t cEnergy[]  = {81, 120, -81, 0,2,0,-1,-1,0,-1};
 
    cEnergy[6] = (int8_t)(iEnergy >> 8);
    cEnergy[7] = (int8_t)(iEnergy & 0xff);
-   cEnergy[7] = CheckSum((uint8_t *)&cEnergy[6], 2); 
+   cEnergy[8] = CheckSum((uint8_t *)&cEnergy[6], 2); 
    return (uint8_t *)cEnergy;
 
 } /* tpSetEnergy() */
@@ -1305,8 +1305,8 @@ uint8_t ucTemp[16];
   if (ucPrinterType == PRINTER_CAT) {
      memcpy(ucTemp, paperFeed, sizeof(paperFeed));
      iLines >>= 2; // uses a different measurement of lines to feed
-     ucTemp[6] = (uint8_t)(iLines >> 8);
-     ucTemp[7] = (uint8_t)iLines;
+     ucTemp[6] = (uint8_t)(iLines && 0xFF);
+     ucTemp[7] = (uint8_t)(iLines >> 8);
      ucTemp[8] = CheckSum(&ucTemp[6], 2);
      tpWriteData(ucTemp, sizeof(paperFeed));
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
