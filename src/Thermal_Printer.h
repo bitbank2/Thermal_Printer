@@ -205,7 +205,12 @@ void tpAlign(uint8_t ucAlign);
 //
 // Print a 2D (QR) barcode
 //
-void tpQRCode(char *);
+void tpQRCode(char *szText);
+//
+// Print a 2D (QR) barcode
+// iSize = starting from 1 / standard is 3
+//
+void tpQRCode(char *szText, int iSize);
 //
 // Print a 1D barcode
 //
