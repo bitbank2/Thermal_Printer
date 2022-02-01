@@ -24,7 +24,12 @@
 
 // Two sets of code - one for ESP32
 #ifdef HAL_ESP32_HAL_H_
+
+#ifdef NIMBLE_SUPPORT
+#include <NimBLEDevice.h>
+#else
 #include <BLEDevice.h>
+#endif
 #endif
 
 #ifdef ARDUINO_ARDUINO_NANO33BLE
@@ -57,7 +62,7 @@ static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
 const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_PHOMEMO};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_FOMEMO};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
@@ -247,20 +252,31 @@ void tpSetWriteMode(uint8_t bWriteMode)
 } /* tpSetWriteMode() */
 
 #ifdef HAL_ESP32_HAL_H_
+
+#ifdef NIMBLE_SUPPORT
+typedef BLEAdvertisedDevice* GeneralBLEAdvertisedDevice;
+#else
+typedef BLEAdvertisedDevice GeneralBLEAdvertisedDevice;
+#endif
 // Called for each device found during a BLE scan by the client
 class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
 {
-    void onResult(BLEAdvertisedDevice advertisedDevice)
+    void onResult(GeneralBLEAdvertisedDevice genAdvertisedDevice)
     {
+#ifdef NIMBLE_SUPPORT
+      auto advertisedDevice = genAdvertisedDevice;
+#else
+      auto advertisedDevice = &genAdvertisedDevice;
+#endif
       int iLen = strlen(szPrinterName);
 #ifdef DEBUG_OUTPUT
-      Serial.printf("Scan Result: %s \n", advertisedDevice.toString().c_str());
+      Serial.printf("Scan Result: %s \n", advertisedDevice->toString().c_str());
 #endif
-      if (iLen > 0 && memcmp(advertisedDevice.getName().c_str(), szPrinterName, iLen) == 0)
+      if (iLen > 0 && memcmp(advertisedDevice->getName().c_str(), szPrinterName, iLen) == 0)
       { // this is what we want
-        Server_BLE_Address = new BLEAddress(advertisedDevice.getAddress());
+        Server_BLE_Address = new BLEAddress(advertisedDevice->getAddress());
         Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
-        strcpy(Scanned_BLE_Name, advertisedDevice.getName().c_str());
+        strcpy(Scanned_BLE_Name, advertisedDevice->getName().c_str());
 #ifdef DEBUG_OUTPUT
         Serial.println("A match!");
         Serial.println((char *)Scanned_BLE_Address.c_str());
@@ -269,13 +285,13 @@ class tpAdvertisedDeviceCallbacks: public BLEAdvertisedDeviceCallbacks
       } else if (iLen == 0) { // check for supported printers
         char szName[32];
         uint8_t ucType;
-        strcpy(szName, advertisedDevice.getName().c_str());
+        strcpy(szName, advertisedDevice->getName().c_str());
         ucType = tpFindPrinterName(szName);
         if (ucType < PRINTER_COUNT) { // found a valid one!
-            Server_BLE_Address = new BLEAddress(advertisedDevice.getAddress());
+            Server_BLE_Address = new BLEAddress(advertisedDevice->getAddress());
             Scanned_BLE_Address = Server_BLE_Address->toString().c_str();
             ucPrinterType = ucType;
-            strcpy(Scanned_BLE_Name, advertisedDevice.getName().c_str());
+            strcpy(Scanned_BLE_Name, advertisedDevice->getName().c_str());
             strcpy(szPrinterName, Scanned_BLE_Name); // allow user to query this
 #ifdef DEBUG_OUTPUT
             Serial.print("A match! - ");
