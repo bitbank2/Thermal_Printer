@@ -56,8 +56,8 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_PHOMEMO};
+const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01", (char *)"GB02", (char *)"GB03", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_PHOMEMO};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
