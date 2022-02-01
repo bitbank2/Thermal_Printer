@@ -56,8 +56,8 @@ static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_PHOMEMO};
+const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MPT-II", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
+const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_FOMEMO};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
@@ -1149,6 +1149,15 @@ uint8_t ucTemp[4];
 //
 void tpQRCode(char *szText)
 {
+	tpQRCode(szText, 0x03);
+}
+
+//
+// Print a 2D (QR) code
+// iSize = starting from 1 / standard is 3
+//
+void tpQRCode(char *szText, int iSize)
+{
 // QR Code: Select the model
 //              Hex     1D      28      6B      04      00      31      41      n1(x32)     n2(x00) - size of model
 // set n1 [49 x31, model 1] [50 x32, model 2] [51 x33, micro qr code]
@@ -1159,7 +1168,7 @@ uint8_t modelQR[] = {0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00};
 // Hex      1D      28      6B      03      00      31      43      n
 // n depends on the printer
 // https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=141
-uint8_t sizeQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x03};
+uint8_t sizeQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, iSize};
 
 //          Hex     1D      28      6B      03      00      31      45      n
 // Set n for error correction [48 x30 -> 7%] [49 x31-> 15%] [50 x32 -> 25%] [51 x33 -> 30%]
