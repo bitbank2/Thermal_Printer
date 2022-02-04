@@ -1087,6 +1087,10 @@ static void tpWriteData(uint8_t *pData, int iLen)
     myDataChar.write((const void *)pData, (uint16_t)iLen);
 #endif
 } /* tpWriteData() */
+
+void tpWriteRawData(uint8_t *pData, int iLen) {
+   tpWriteData(pData,iLen);
+}
 //
 // Select one of 2 available text fonts along with attributes
 // FONT_12x24 or FONT_9x17
