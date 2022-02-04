@@ -117,6 +117,11 @@ int tpDrawCustomText(GFXfont *pFont, int x, int y, char *szMsg);
 //
 int tpPrintCustomText(GFXfont *pFont, int x, char *szMsg);
 
+//
+// Send raw data to printer
+//
+void tpWriteRawData(uint8_t *pData, int iLen);
+
 // Select one of 2 available text fonts along with attributes
 // FONT_12x24 or FONT_9x17
 // Each option is either 0 (disabled) or 1 (enabled)
