@@ -698,17 +698,37 @@ int tpIsConnected(void)
   }
   return 0; // not connected
 } /* tpIsConnected() */
+
 //
 // After a successful scan, connect to the printer
 // returns 1 if successful, 0 for failure
 //
 int tpConnect(void)
 {
+   return tpConnect(NULL);
+} /* tpConnect() */
+
+//
+// After a successful scan, connect to the printer
+// returns 1 if successful, 0 for failure
+//
+int tpConnect(const char *szMacAddress)
+{
 #ifdef HAL_ESP32_HAL_H_
     pClient  = BLEDevice::createClient();
+    if (szMacAddress != NULL) {
+       if (Server_BLE_Address != NULL) {
+          delete Server_BLE_Address;
+       }
+       Server_BLE_Address = new BLEAddress(std::string(szMacAddress));
 #ifdef DEBUG_OUTPUT
-    Serial.printf(" - Created client, connecting to %s\n", Scanned_BLE_Address.c_str());
+       Serial.printf(" - Created client, connecting to %s\n", szMacAddress);
 #endif
+    } else {
+#ifdef DEBUG_OUTPUT
+       Serial.printf(" - Created client, connecting to %s\n", Scanned_BLE_Address.c_str());
+#endif
+    }
     // Connect to the BLE Server.
     pClient->connect(*Server_BLE_Address);
 Serial.println("Came back from connect");

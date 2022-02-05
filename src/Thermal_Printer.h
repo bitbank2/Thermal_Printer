@@ -203,6 +203,11 @@ void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
 //
 int tpScan(const char *szName, int iSeconds);
 //
+// connect to a printer with a macaddress
+// returns 1 if successful, 0 for failure
+//
+int tpConnect(const char *szMacAddress);
+//
 // Set the text and barcode alignment
 // Use ALIGN_LEFT, ALIGN_CENTER or ALIGN_RIGHT
 //
