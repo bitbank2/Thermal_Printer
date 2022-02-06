@@ -117,6 +117,11 @@ int tpDrawCustomText(GFXfont *pFont, int x, int y, char *szMsg);
 //
 int tpPrintCustomText(GFXfont *pFont, int x, char *szMsg);
 
+//
+// Send raw data to printer
+//
+void tpWriteRawData(uint8_t *pData, int iLen);
+
 // Select one of 2 available text fonts along with attributes
 // FONT_12x24 or FONT_9x17
 // Each option is either 0 (disabled) or 1 (enabled)
@@ -198,6 +203,11 @@ void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
 //
 int tpScan(const char *szName, int iSeconds);
 //
+// connect to a printer with a macaddress
+// returns 1 if successful, 0 for failure
+//
+int tpConnect(const char *szMacAddress);
+//
 // Set the text and barcode alignment
 // Use ALIGN_LEFT, ALIGN_CENTER or ALIGN_RIGHT
 //
@@ -205,7 +215,12 @@ void tpAlign(uint8_t ucAlign);
 //
 // Print a 2D (QR) barcode
 //
-void tpQRCode(char *);
+void tpQRCode(char *szText);
+//
+// Print a 2D (QR) barcode
+// iSize = starting from 1 / standard is 3
+//
+void tpQRCode(char *szText, int iSize);
 //
 // Print a 1D barcode
 //
