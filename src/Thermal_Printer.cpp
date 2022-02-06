@@ -60,26 +60,79 @@ static void tpPreGraphics(int iWidth, int iHeight);
 static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
 
+struct PRINTERID
+{
+  const char *szBLEName;
+  uint8_t ucBLEType;
+} ;
 // Names and types of supported printers
-const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MPT-II", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
-const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_FOMEMO};
+const PRINTERID szPrinterIDs[] = {
+	{(char *)"PT-210", PRINTER_MTP2},
+	{(char *)"MTP-2", PRINTER_MTP2},
+	{(char *)"MPT-II", PRINTER_MTP2},
+	{(char *)"MPT-3", PRINTER_MTP3},
+	{(char *)"MPT-3F", PRINTER_MTP3},
+	{(char *)"GT01", PRINTER_CAT},
+	{(char *)"GT02", PRINTER_CAT},
+	{(char *)"GB01", PRINTER_CAT},
+	{(char *)"GB02", PRINTER_CAT},
+	{(char *)"GB03", PRINTER_CAT},
+	{(char *)"YHK-A133", PRINTER_CAT},
+	{(char *)"PeriPage+", PRINTER_PERIPAGEPLUS},
+	{(char *)"PeriPage_", PRINTER_PERIPAGE},
+	{(char *)"T02", PRINTER_FOMEMO},
+	{NULL, 0}		// terminator
+};
+//const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MPT-II", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
+//const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_FOMEMO};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
 const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02", (char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
 // Command sequences for the 'cat' printer
-const int8_t getDevState[] = {81, 120, -93, 0, 1, 0, 0, 0, -1};
-const int8_t setQ200DPI[] = {81, 120, -92, 0, 1, 0, 50, -98, -1};
-const int8_t latticeStart[] = {81, 120, -90, 0, 11, 0, -86, 85, 23,
-                        56, 68, 95, 95, 95, 68, 56, 44, -95, -1};
-const int8_t latticeEnd[] = {81, 120, -90, 0, 11, 0, -86, 85, 23, 0, 0, 0, 0, 0, 0, 0, 23, 17, -1};
-const uint8_t paperFeed[] = {0x51, 0x78, 0xa1, 0, 2, 0, 30, 90, 0xff, 0xff};
+// for more details see https://github.com/fulda1/Thermal_Printer/wiki/Cat-printer-protocol
+const uint8_t RetractPaper[] = {0x51, 0x78, 0xA0, 0, 0x02, 0, 0x00, 0x00, 0xff, 0xff}; // 0xA0 Retract Paper - Data: Number of steps to go backward
+const uint8_t paperFeed[] = {0x51, 0x78, 0xA1, 0, 0x02, 0, 0x1E, 0x5A, 0xff, 0xff}; // 0xA1 Feed Paper - Data: Number of steps to go forward
+const uint8_t setPaper[] = {0x51, 0x78, 0xA1, 0, 0x02, 0, 0x1E, 0x00, 0xF9, 0xFF}; // 0xA1 Feed Paper - Data: Number of steps to go forward
+//DrawBitmap = 0xA2  # Data: Line to draw. 0 bit -> don't draw pixel, 1 bit -> draw pixel
+const uint8_t getDevState[] = {0x51, 0x78, 0xA3, 0, 1, 0, 0, 0, 0xFF}; // data 0
+const uint8_t setQ200DPI[] = {0x51, 0x78, 0xA4, 0, 1, 0, 32, 0x9E, 0xFF}; // 0xA4 Set quality 0x31-0x36 GB01 printer always 33
+// 0xA5 ???
+const uint8_t latticeStart[] = {0x51, 0x78, 0xA6, 0, 0x0B, 0, 0xAA, 0x55, 0x17,		// 0xA6 control Lattice Eleven bytes, all constants. One set used before printing, one after.
+                        0x38, 0x44, 0x5F, 0x5F, 0x5F, 0x44, 0x38, 0x2C, 0xA1, 0xFF};
+const uint8_t latticeEnd[] = {0x51, 0x78, 0xA6, 0, 0x0B, 0, 0xAA, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x11, 0xFF};
+// A7 ??
+const uint8_t getDevInfo[] = {0x51, 0x78, 0xA8, 0, 1, 0, 0, 0, 0xFF}; // data 0
+// GetDevInfo = 0xA8  # Data: 0
+// XOff = (0x51, 0x78, 0xAE, 0x01, 0x01, 0x00, 0x10, 0x70, 0xFF)
+// XOn = (0x51, 0x78, 0xAE, 0x01, 0x01, 0x00, 0x00, 0x00, 0xFF)
+// SetEnergy = 0xAF  # Data: 1 - 0xFFFF
+//OtherFeedPaper = 0xBD  # Data: one byte, set to a device-specific "Speed" value before printing
+//#                              and to 0x19 before feeding blank paper
+const uint8_t printImage[] = {0x51, 0x78, 0xBE, 0, 0x01, 0, 0x00, 0, 0xFF}; // 0xBE DrawingMode - Data: 1 for Text, 0 for Images
+const uint8_t printText[] = {0x51, 0x78, 0xBE, 0, 0x01, 0, 0x01, 0x07, 0xFF}; // 0xBE DrawingMode - Data: 1 for Text, 0 for Images
+
+
 int i;
-const int8_t setPaper[] = {81, 120, -95, 0, 2, 0, 48, 0, -7, -1};
-const int8_t printImage[] = {81, 120, -66, 0, 1, 0, 0, 0, -1};
-const int8_t printText[] = {81, 120, -66, 0, 1, 0, 1, 7, -1};
-const int8_t cChecksumTable[] = {0, 7, 14, 9, 28, 27, 18, 21, 56, 63, 54, 49, 36, 35, 42, 45, 112, 119, 126, 121, 108, 107, 98, 101, 72, 79, 70, 65, 84, 83, 90, 93, -32, -25, -18, -23, -4, -5, -14, -11, -40, -33, -42, -47, -60, -61, -54, -51, -112, -105, -98, -103, -116, -117, -126, -123, -88, -81, -90, -95, -76, -77, -70, -67, -57, -64, -55, -50, -37, -36, -43, -46, -1, -8, -15, -10, -29, -28, -19, -22, -73, -80, -71, -66, -85, -84, -91, -94, -113, -120, -127, -122, -109, -108, -99, -102, 39, 32, 41, 46, 59, 60, 53, 50, 31, 24, 17, 22, 3, 4, 13, 10, 87, 80, 89, 94, 75, 76, 69, 66, 111, 104, 97, 102, 115, 116,
-                     125, 122, -119, -114, -121, -128, -107, -110, -101, -100, -79, -74, -65, -72, -83, -86, -93, -92, -7, -2, -9, -16, -27, -30, -21, -20, -63, -58, -49, -56, -35, -38, -45, -44, 105, 110, 103, 96, 117, 114, 123, 124, 81, 86, 95, 88, 77, 74, 67, 68, 25, 30, 23, 16, 5, 2, 11, 12, 33, 38, 47, 40, 61, 58, 51, 52, 78, 73, 64, 71, 82, 85, 92, 91, 118, 113, 120, 127, 106, 109, 100, 99, 62, 57, 48, 55, 34, 37, 44, 43, 6, 1, 8, 15, 26, 29, 20, 19, -82, -87, -96, -89, -78, -75, -68, -69, -106, -111, -104, -97, -118, -115, -124, -125, -34, -39, -48, -41, -62, -59, -52, -53, -26, -31, -24, -17, -6, -3, -12, -13};
+
+//CRC8 pre calculated values
+const uint8_t cChecksumTable[] = {
+	0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15,  0x38, 0x3f, 0x36, 0x31, 0x24, 0x23, 0x2a, 0x2d, 
+	0x70, 0x77, 0x7e, 0x79, 0x6c, 0x6b, 0x62, 0x65,  0x48, 0x4f, 0x46, 0x41, 0x54, 0x53, 0x5a, 0x5d, 
+	0xe0, 0xe7, 0xee, 0xe9, 0xfc, 0xfb, 0xf2, 0xf5,  0xd8, 0xdf, 0xd6, 0xd1, 0xc4, 0xc3, 0xca, 0xcd, 
+	0x90, 0x97, 0x9e, 0x99, 0x8c, 0x8b, 0x82, 0x85,  0xa8, 0xaf, 0xa6, 0xa1, 0xb4, 0xb3, 0xba, 0xbd, 
+	0xc7, 0xc0, 0xc9, 0xce, 0xdb, 0xdc, 0xd5, 0xd2,  0xff, 0xf8, 0xf1, 0xf6, 0xe3, 0xe4, 0xed, 0xea, 
+	0xb7, 0xb0, 0xb9, 0xbe, 0xab, 0xac, 0xa5, 0xa2,  0x8f, 0x88, 0x81, 0x86, 0x93, 0x94, 0x9d, 0x9a, 
+	0x27, 0x20, 0x29, 0x2e, 0x3b, 0x3c, 0x35, 0x32,  0x1f, 0x18, 0x11, 0x16, 0x03, 0x04, 0x0d, 0x0a, 
+	0x57, 0x50, 0x59, 0x5e, 0x4b, 0x4c, 0x45, 0x42,  0x6f, 0x68, 0x61, 0x66, 0x73, 0x74, 0x7d, 0x7a, 
+	0x89, 0x8e, 0x87, 0x80, 0x95, 0x92, 0x9b, 0x9c,  0xb1, 0xb6, 0xbf, 0xb8, 0xad, 0xaa, 0xa3, 0xa4, 
+	0xf9, 0xfe, 0xf7, 0xf0, 0xe5, 0xe2, 0xeb, 0xec,  0xc1, 0xc6, 0xcf, 0xc8, 0xdd, 0xda, 0xd3, 0xd4, 
+	0x69, 0x6e, 0x67, 0x60, 0x75, 0x72, 0x7b, 0x7c,  0x51, 0x56, 0x5f, 0x58, 0x4d, 0x4a, 0x43, 0x44, 
+	0x19, 0x1e, 0x17, 0x10, 0x05, 0x02, 0x0b, 0x0c,  0x21, 0x26, 0x2f, 0x28, 0x3d, 0x3a, 0x33, 0x34, 
+	0x4e, 0x49, 0x40, 0x47, 0x52, 0x55, 0x5c, 0x5b,  0x76, 0x71, 0x78, 0x7f, 0x6a, 0x6d, 0x64, 0x63, 
+	0x3e, 0x39, 0x30, 0x37, 0x22, 0x25, 0x2c, 0x2b,  0x06, 0x01, 0x08, 0x0f, 0x1a, 0x1d, 0x14, 0x13, 
+	0xae, 0xa9, 0xa0, 0xa7, 0xb2, 0xb5, 0xbc, 0xbb,  0x96, 0x91, 0x98, 0x9f, 0x8a, 0x8d, 0x84, 0x83, 
+	0xde, 0xd9, 0xd0, 0xd7, 0xc2, 0xc5, 0xcc, 0xcb,  0xe6, 0xe1, 0xe8, 0xef, 0xfa, 0xfd, 0xf4, 0xf3};
 
 /* Table of byte flip values to mirror-image incoming CCITT data */
 const unsigned char ucMirror[256]=
@@ -222,12 +275,33 @@ static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data, uint16_
 #endif // Adafruit nrf52
 
 #ifdef HAL_ESP32_HAL_H_
+static void ESP_notify_callback(
+  BLERemoteCharacteristic* pBLERemoteCharacteristic,
+  uint8_t* pData,
+  size_t length,
+  bool isNotify) {
+    Serial.print("Notify callback for characteristic ");
+    Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
+    Serial.print(" of data length ");
+    Serial.println(length);
+    Serial.print("data: ");
+    for (int i=0; i<length; i++)
+    {
+      Serial.print(pData[i], HEX);
+      Serial.print(" ");
+    }
+    Serial.println(" ");
+}
+#endif // ESP callback
+
+#ifdef HAL_ESP32_HAL_H_
 static BLEUUID SERVICE_UUID0("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
 static BLEUUID CHAR_UUID_DATA0 ("49535343-8841-43F4-A8D4-ECBE34729BB3");
 //static BLEUUID SERVICE_UUID1("0000AE30-0000-1000-8000-00805F9B34FB"); //Service
 //static BLEUUID CHAR_UUID_DATA1("0000AE01-0000-1000-8000-00805F9B34FB"); // data characteristic
 static BLEUUID SERVICE_UUID1(BLEUUID ((uint16_t)0xae30));
 static BLEUUID CHAR_UUID_DATA1(BLEUUID((uint16_t)0xae01));
+static BLEUUID CHAR_UUID_NOTIFY1(BLEUUID((uint16_t)0xae02));
 static BLEUUID SERVICE_UUID2(BLEUUID ((uint16_t)0xff00));
 static BLEUUID CHAR_UUID_DATA2(BLEUUID((uint16_t)0xff02));
 
@@ -235,6 +309,7 @@ static String Scanned_BLE_Address;
 static BLEScanResults foundDevices;
 static BLEAddress *Server_BLE_Address;
 static BLERemoteCharacteristic* pRemoteCharacteristicData;
+static BLERemoteCharacteristic* pRemoteCharacteristicNotify;
 static BLEScan *pBLEScan;
 static BLEClient* pClient;
 static char Scanned_BLE_Name[32];
@@ -756,7 +831,10 @@ Serial.println("Came back from connect");
         if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA0);
         else if (ucPrinterType == PRINTER_CAT)
-          pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA1);
+          {
+            pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA1);
+            pRemoteCharacteristicNotify = pRemoteService->getCharacteristic(CHAR_UUID_NOTIFY1);
+          }
         else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA2);
         if (pRemoteCharacteristicData != NULL)
@@ -764,6 +842,10 @@ Serial.println("Came back from connect");
 #ifdef DEBUG_OUTPUT
           Serial.println("Got data transfer characteristic!");
 #endif
+          if (pRemoteCharacteristicData != NULL)
+            if(pRemoteCharacteristicNotify->canNotify())
+              pRemoteCharacteristicNotify->registerForNotify(ESP_notify_callback);
+
           bConnected = 1;
           return 1;
         }
@@ -889,13 +971,15 @@ int i = 0;
 
    szName[9] = 0; // Need to chop off the name after 'PeriPage+'
                   // because it includes 2 bytes of the BLE MAC address
-   while (szBLENames[i] != NULL) {
-     if (strcmp(szName, szBLENames[i]) == 0) { // found a supported printer
+   while (szPrinterIDs[i].szBLEName != NULL) {
+     if (strcmp(szName, szPrinterIDs[i].szBLEName) == 0) { // found a supported printer
+#ifdef DEBUG_OUTPUT
      Serial.print("Found a match for ");
      Serial.println(szName);
      Serial.print("Printer type = ");
-     Serial.println(ucBLETypes[i], DEC);
-        return ucBLETypes[i];
+     Serial.println(szPrinterIDs[i].ucBLEType, DEC);
+#endif
+        return szPrinterIDs[i].ucBLEType;
      } else {
        i++;
      }
@@ -1159,11 +1243,11 @@ uint8_t cs = 0;
 //
 static uint8_t *tpSetEnergy(int iEnergy)
 {
-static int8_t cEnergy[]  = {81, 120, -81, 0,2,0,-1,-1,0,-1};
+static uint8_t cEnergy[]  = {0x51, 0x78, 0xAF, 0,0x02,0,0xFF,0xFF,0,0xFF}; // SetEnergy = 0xAF  # Data: 1 - 0xFFFF
 
-   cEnergy[6] = (int8_t)(iEnergy >> 8);
-   cEnergy[7] = (int8_t)(iEnergy & 0xff);
-   cEnergy[7] = CheckSum((uint8_t *)&cEnergy[6], 2); 
+   cEnergy[6] = (int8_t)(iEnergy & 0xFF);
+   cEnergy[7] = (int8_t)(iEnergy >> 8);
+   cEnergy[8] = CheckSum((uint8_t *)&cEnergy[6], 2); 
    return (uint8_t *)cEnergy;
 
 } /* tpSetEnergy() */
@@ -1354,8 +1438,8 @@ uint8_t ucTemp[16];
   if (ucPrinterType == PRINTER_CAT) {
      memcpy(ucTemp, paperFeed, sizeof(paperFeed));
      iLines >>= 2; // uses a different measurement of lines to feed
-     ucTemp[6] = (uint8_t)(iLines >> 8);
-     ucTemp[7] = (uint8_t)iLines;
+     ucTemp[6] = (uint8_t)(iLines && 0xFF);
+     ucTemp[7] = (uint8_t)(iLines >> 8);
      ucTemp[8] = CheckSum(&ucTemp[6], 2);
      tpWriteData(ucTemp, sizeof(paperFeed));
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
