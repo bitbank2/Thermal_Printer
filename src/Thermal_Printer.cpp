@@ -83,35 +83,33 @@ const PRINTERID szPrinterIDs[] = {
 	{(char *)"T02", PRINTER_FOMEMO},
 	{NULL, 0}		// terminator
 };
-//const char *szBLENames[] = {(char *)"PT-210", (char *)"MTP-2", (char *)"MPT-II", (char *)"MTP-3",(char *)"MTP-3F",(char *)"GT01",(char *)"GT02",(char *)"GB01",(char *)"GB02", (char *)"YHK-A133", (char *)"PeriPage+",(char *)"PeriPage_","T02",NULL};
-//const uint8_t ucBLETypes[] = {PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP2, PRINTER_MTP3, PRINTER_MTP3, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_CAT, PRINTER_PERIPAGEPLUS, PRINTER_PERIPAGE, PRINTER_FOMEMO};
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
 const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
 const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02", (char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
+
 // Command sequences for the 'cat' printer
 // for more details see https://github.com/fulda1/Thermal_Printer/wiki/Cat-printer-protocol
-const uint8_t RetractPaper[] = {0x51, 0x78, 0xA0, 0, 0x02, 0, 0x00, 0x00, 0xff, 0xff}; // 0xA0 Retract Paper - Data: Number of steps to go backward
-const uint8_t paperFeed[] = {0x51, 0x78, 0xA1, 0, 0x02, 0, 0x1E, 0x5A, 0xff, 0xff}; // 0xA1 Feed Paper - Data: Number of steps to go forward
-const uint8_t setPaper[] = {0x51, 0x78, 0xA1, 0, 0x02, 0, 0x1E, 0x00, 0xF9, 0xFF}; // 0xA1 Feed Paper - Data: Number of steps to go forward
-//DrawBitmap = 0xA2  # Data: Line to draw. 0 bit -> don't draw pixel, 1 bit -> draw pixel
-const uint8_t getDevState[] = {0x51, 0x78, 0xA3, 0, 1, 0, 0, 0, 0xFF}; // data 0
-const uint8_t setQ200DPI[] = {0x51, 0x78, 0xA4, 0, 1, 0, 32, 0x9E, 0xFF}; // 0xA4 Set quality 0x31-0x36 GB01 printer always 33
+const uint8_t paperRetract = 0xA0;	// 0xA0 Retract Paper - Data: Number of steps to go backward
+const uint8_t paperFeed = 0xA1;		// 0xA1 Feed Paper - Data: Number of steps to go forward
+//const uint8_t  DataLine = 0xA2;  # Data: Line to draw. 0 bit -> don't draw pixel, 1 bit -> draw pixel
+const uint8_t getDevState = 0xA3; // 0xA3 Get Device State - data 0; reply is by notification
+const uint8_t setQuality = 0xA4; // 0xA4 Set quality 0x31-0x36 GB01 printer always 0x33, other 0x32?
 // 0xA5 ???
-const uint8_t latticeStart[] = {0x51, 0x78, 0xA6, 0, 0x0B, 0, 0xAA, 0x55, 0x17,		// 0xA6 control Lattice Eleven bytes, all constants. One set used before printing, one after.
-                        0x38, 0x44, 0x5F, 0x5F, 0x5F, 0x44, 0x38, 0x2C, 0xA1, 0xFF};
-const uint8_t latticeEnd[] = {0x51, 0x78, 0xA6, 0, 0x0B, 0, 0xAA, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x11, 0xFF};
+const uint8_t controlLattice = 0xA4;		// 0xA6 control Lattice Eleven bytes, all constants. One set used before printing, one after.
+const uint8_t latticeStart[] = {0x51, 0x78, 0xA6, 0, 0x0B, 0, 0xAA, 0x55, 0x17, 0x38, 0x44, 0x5F, 0x5F, 0x5F, 0x44, 0x38, 0x2C, 0xA1, 0xFF};
+const uint8_t latticeEnd[] =   {0x51, 0x78, 0xA6, 0, 0x0B, 0, 0xAA, 0x55, 0x17, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x11, 0xFF};
 // A7 ??
-const uint8_t getDevInfo[] = {0x51, 0x78, 0xA8, 0, 1, 0, 0, 0, 0xFF}; // data 0
+const uint8_t getDevInfo = 0xA8; // 0xA8 Get Device Info - data 0; reply with notify something look like version.
+const uint8_t setEnergy = 0xAF; // 0xAF Set Energy - Data: 1 - 0xFFFF
+
+const uint8_t setDrawingMode = 0xBE; // 0xBE DrawingMode - Data: 1 for Text, 0 for Images
+
 // GetDevInfo = 0xA8  # Data: 0
 // XOff = (0x51, 0x78, 0xAE, 0x01, 0x01, 0x00, 0x10, 0x70, 0xFF)
 // XOn = (0x51, 0x78, 0xAE, 0x01, 0x01, 0x00, 0x00, 0x00, 0xFF)
-// SetEnergy = 0xAF  # Data: 1 - 0xFFFF
 //OtherFeedPaper = 0xBD  # Data: one byte, set to a device-specific "Speed" value before printing
 //#                              and to 0x19 before feeding blank paper
-const uint8_t printImage[] = {0x51, 0x78, 0xBE, 0, 0x01, 0, 0x00, 0, 0xFF}; // 0xBE DrawingMode - Data: 1 for Text, 0 for Images
-const uint8_t printText[] = {0x51, 0x78, 0xBE, 0, 0x01, 0, 0x01, 0x07, 0xFF}; // 0xBE DrawingMode - Data: 1 for Text, 0 for Images
-
 
 int i;
 
@@ -810,7 +808,9 @@ int tpConnect(const char *szMacAddress)
     }
     // Connect to the BLE Server.
     pClient->connect(*Server_BLE_Address);
-Serial.println("Came back from connect");
+#ifdef DEBUG_OUTPUT
+    Serial.println("Came back from connect");
+#endif
     if (!pClient->isConnected())
     {
       Serial.println("Connect failed");
@@ -1199,6 +1199,55 @@ static void tpWriteData(uint8_t *pData, int iLen)
 void tpWriteRawData(uint8_t *pData, int iLen) {
    tpWriteData(pData,iLen);
 }
+
+//
+// Checksum
+//
+static uint8_t CheckSum(uint8_t *pData, int iLen)
+{
+int i;
+uint8_t cs = 0;
+
+    for (i=0; i<iLen; i++)
+        cs = cChecksumTable[(cs ^ pData[i])];
+    return cs;
+} /* CheckSum() */
+
+// Compose command for cat printer
+// 0x51 0x78 -> prefix (STX)
+// CC -> command
+// 00 -> from PC to printer
+// 01 -> one byte of data
+// 00 -> upper byte for one byte
+// DD -> data
+// CRC -> checksum of data
+// 0xFF -> suffix (ETX)
+
+// call for one byte data
+void tpWriteCatCommandD8(uint8_t command, uint8_t data)
+{
+// prepare blank command:
+uint8_t ucTemp[9] = {0x51, 0x78, 0xCC, 0x00, 0x01, 0x00, 0xDD, 0xC0, 0xFF};
+                   // prefix      cmd   dir    length    data  crc   suffix
+    ucTemp[2] = command;				// add requested command
+    ucTemp[6] = data;					// add requested data
+    ucTemp[7] = cChecksumTable[data];	// add CRC
+   tpWriteData(ucTemp,9);
+}
+
+// same call for two bytes data
+void tpWriteCatCommandD16(uint8_t command, uint16_t data)
+{
+// prepare blank command:
+uint8_t ucTemp[10] = {0x51, 0x78, 0xCC, 0x00, 0x02, 0x00, 0xDD, 0xDD, 0xC0, 0xFF};
+                   // prefix      cmd   dir    length     data  data  crc   suffix
+    ucTemp[2] = command;					// add requested command
+    ucTemp[6] = (uint8_t)(data & 0xFF);	// add requested data
+    ucTemp[7] = (uint8_t)(data >> 8);		// add requested data
+    ucTemp[8] = CheckSum(ucTemp+6, 2);	// add CRC
+    tpWriteData(ucTemp,10);
+}
+
 //
 // Select one of 2 available text fonts along with attributes
 // FONT_12x24 or FONT_9x17
@@ -1230,31 +1279,6 @@ int i;
      tpWriteData(ucTemp, i+1);
   }
 } /* tpSetFont() */
-//
-// Checksum
-//
-static uint8_t CheckSum(uint8_t *pData, int iLen)
-{
-int i;
-uint8_t cs = 0;
-
-    for (i=0; i<iLen; i++)
-        cs = cChecksumTable[(cs ^ pData[i])];
-    return cs;
-} /* CheckSum() */
-//
-// Set printer energy
-//
-static uint8_t *tpSetEnergy(int iEnergy)
-{
-static uint8_t cEnergy[]  = {0x51, 0x78, 0xAF, 0,0x02,0,0xFF,0xFF,0,0xFF}; // SetEnergy = 0xAF  # Data: 1 - 0xFFFF
-
-   cEnergy[6] = (int8_t)(iEnergy & 0xFF);
-   cEnergy[7] = (int8_t)(iEnergy >> 8);
-   cEnergy[8] = CheckSum((uint8_t *)&cEnergy[6], 2); 
-   return (uint8_t *)cEnergy;
-
-} /* tpSetEnergy() */
 //
 // Set the text and barcode alignment
 // Use ALIGN_LEFT, ALIGN_CENTER or ALIGN_RIGHT
@@ -1354,7 +1378,7 @@ int i=0;
 void tpPrintCatTextLine()
 {
     //tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));
-    tpWriteData((uint8_t *)printText, sizeof(printText));	// just for fun
+    tpWriteCatCommandD8(setDrawingMode,1);					// Derawing mode 1 = Text 
      uint8_t ucTemp[56];
      for (int j=0; j<8; j++) // pixel row of text
      {
@@ -1373,8 +1397,7 @@ void tpPrintCatTextLine()
     //tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
      CatStrLen=0;
 }
-
-
+// tpPrintCatTextLine
 
 //
 // Print plain text immediately
@@ -1470,15 +1493,12 @@ void tpFeed(int iLines)
 {
 uint8_t ucTemp[16];
 
+  if (bConnected && iLines < 0 && iLines > -256 && ucPrinterType == PRINTER_CAT)
+     tpWriteCatCommandD8(paperRetract,abs(iLines));			// some cat printers support retrack. Not all :(
   if (!bConnected || iLines < 0 || iLines > 255)
     return;
   if (ucPrinterType == PRINTER_CAT) {
-     memcpy(ucTemp, paperFeed, sizeof(paperFeed));
-     iLines >>= 2; // uses a different measurement of lines to feed
-     ucTemp[6] = (uint8_t)(iLines && 0xFF);
-     ucTemp[7] = (uint8_t)(iLines >> 8);
-     ucTemp[8] = CheckSum(&ucTemp[6], 2);
-     tpWriteData(ucTemp, sizeof(paperFeed));
+     tpWriteCatCommandD8(paperFeed,iLines);
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
    // The PT-210 doesn't have a "feed-by-line" command
    // so instead, we'll send 1 byte-wide graphics of a blank segment
@@ -1495,6 +1515,14 @@ uint8_t ucTemp[16];
   }
 } /* tpFeed() */
 //
+// tpSetEnergy Set Energy - switch between eco and nice images :) 
+//
+void tpSetEnergy(int iEnergy)
+{
+  if (bConnected && ucPrinterType == PRINTER_CAT)
+     tpWriteCatCommandD16(setEnergy,iEnergy);
+} /* tpSetEnergy */
+//
 // Send the preamble for transmitting graphics
 //
 static void tpPreGraphics(int iWidth, int iHeight)
@@ -1502,14 +1530,15 @@ static void tpPreGraphics(int iWidth, int iHeight)
 uint8_t *s, ucTemp[16];
 
   if (ucPrinterType == PRINTER_CAT) {
-//    tpWriteData((uint8_t *)getDevState, sizeof(getDevState));
-//    tpWriteData((uint8_t *)setQ200DPI, sizeof(setQ200DPI));
-//    tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));
+//    tpWriteCatCommandD8(getDevState, 0);		// check for stte (paper, heat etc)
+//    tpWriteCatCommandD8(setQuality,0x33);		// probably 200 DPI?
+//    tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));	// I do not understand. Probably it start energize stepper motor
+//    tpWriteCatCommandD8(getDevInfo,0);		// not so useful
 
-//    s = tpSetEnergy(12000);
-//    tpWriteData(s, 10);
-    tpWriteData((uint8_t *)printImage, sizeof(printImage));
-//    tpWriteData((uint8_t *)paperFeed, 9);
+//    tpWriteCatCommandD16(setEnergy,12000);
+    tpWriteCatCommandD8(setDrawingMode, 0);		// drawing mode 0 for image
+    //tpWriteCatCommandD8(paperFeed,4);		// is good to start with some feed to wake up printer
+    //tpWriteCatCommandD8(paperFeed,4);		// is good to start with some feed to wake up printer
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
   // The printer command for graphics is laid out like this:
   // 0x1d 'v' '0' '0' xLow xHigh yLow yHigh <x/8 * y data bytes>
@@ -1536,10 +1565,10 @@ uint8_t *s, ucTemp[16];
 static void tpPostGraphics(void)
 {
    if (ucPrinterType == PRINTER_CAT) {
-//      tpWriteData((uint8_t *)setPaper, sizeof(setPaper));
-//      tpWriteData((uint8_t *)setPaper, sizeof(setPaper));
+//      tpWriteCatCommandD8(paperFeed,0x1E);
+//      tpWriteCatCommandD8(paperFeed,0x1E);
 //      tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
-//      tpWriteData((uint8_t *)getDevState, sizeof(getDevState));
+//      tpWriteCatCommandD8(getDevState, 0);
    } else if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
  //     uint8_t ucTemp[] = {0x1b, 0x4a, 0x40, 0x10, 0xff, 0xfe, 0x45};
  //     tpWriteData(ucTemp, sizeof(ucTemp));
