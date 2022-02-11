@@ -104,6 +104,10 @@ char *tpGetName(void);
 //
 void tpFeed(int iLines);
 //
+// tpSetEnergy Set Energy - switch between eco and nice images :) 
+//
+void tpSetEnergy(int iEnergy);
+//
 // Return the measurements of a rectangle surrounding the given text string
 // rendered in the given font
 //
