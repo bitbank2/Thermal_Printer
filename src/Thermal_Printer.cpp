@@ -1606,6 +1606,31 @@ int i;
   tpPostGraphics();
 
 } /* tpPrintBuffer() */
+
+void tpPrintBufferSide(void)
+{
+uint8_t *s;
+int x, y;
+uint8_t line[bb_pitch] = {0};
+
+  if (!bConnected)
+    return;
+
+  tpPreGraphics(bb_height, bb_width);
+  // Print the graphics
+  s = pBackBuffer;
+  for (y=0; y<bb_width; y++) {
+    for (x=0; x<bb_height; x++)
+    {
+      line[x/8] = (line[x/8] << 1) | (((*(s+((x+1)*bb_width-1-y)/8)) >> (y%8))&1);
+    }
+    tpSendScanline(line, bb_pitch);
+  } // for y
+  
+  tpPostGraphics();
+
+} /* tpPrintBufferSide() */
+
 //
 // Draw a line between 2 points
 //
