@@ -190,6 +190,10 @@ int tpSetPixel(int x, int y, uint8_t ucColor);
 //
 void tpPrintBuffer(void);
 //
+// Same as tpPrintBuffer, but output will be rotated by 90 degrees
+//
+void tpPrintBufferSide(void);
+//
 // Draw a line between 2 points
 //
 void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
