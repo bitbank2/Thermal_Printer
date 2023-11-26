@@ -361,7 +361,13 @@ void setup() {
       tpPrintBuffer();
       Serial.println((char *)"Testing plain text printing");
       tpSetFont(0, 0, 0, 0, 0);
+      // for GOOJPRT PT-210
+      // uint8_t font_a_cmd[] = {0x1b,'M',0x00};
+      // tpWriteRawData(&font_a_cmd[0],sizeof(font_a_cmd));
       tpPrint((char *)"12x24 plain text\r");
+      // for GOOJPRT PT-210
+      // uint8_t font_b_cmd[] = {0x1b,'M',0x01};
+      // tpWriteRawData(&font_b_cmd[0],sizeof(font_b_cmd));
       tpSetFont(1, 0, 0, 0, 0);
       tpPrint((char *)"9x17 plain text\r");
       tpSetFont(1, 1, 0, 0, 0);

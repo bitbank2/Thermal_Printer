@@ -104,6 +104,10 @@ char *tpGetName(void);
 //
 void tpFeed(int iLines);
 //
+// tpSetEnergy Set Energy - switch between eco and nice images :) 
+//
+void tpSetEnergy(int iEnergy);
+//
 // Return the measurements of a rectangle surrounding the given text string
 // rendered in the given font
 //
@@ -116,6 +120,11 @@ int tpDrawCustomText(GFXfont *pFont, int x, int y, char *szMsg);
 // Print a string of characters in a custom font to the connected printer
 //
 int tpPrintCustomText(GFXfont *pFont, int x, char *szMsg);
+
+//
+// Send raw data to printer
+//
+void tpWriteRawData(uint8_t *pData, int iLen);
 
 // Select one of 2 available text fonts along with attributes
 // FONT_12x24 or FONT_9x17
@@ -185,6 +194,10 @@ int tpSetPixel(int x, int y, uint8_t ucColor);
 //
 void tpPrintBuffer(void);
 //
+// Same as tpPrintBuffer, but output will be rotated by 90 degrees
+//
+void tpPrintBufferSide(void);
+//
 // Draw a line between 2 points
 //
 void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
@@ -197,6 +210,11 @@ void tpDrawLine(int x1, int y1, int x2, int y2, uint8_t ucColor);
 // iSeconds = how many seconds to scan for devices
 //
 int tpScan(const char *szName, int iSeconds);
+//
+// connect to a printer with a macaddress
+// returns 1 if successful, 0 for failure
+//
+int tpConnect(const char *szMacAddress);
 //
 // Set the text and barcode alignment
 // Use ALIGN_LEFT, ALIGN_CENTER or ALIGN_RIGHT
