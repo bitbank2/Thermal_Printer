@@ -20,6 +20,11 @@ Larry Bank: Thermal Printer library written by Larry Bank
 * Twitter: https://twitter.com/fast_code_r_us
 * Github: https://github.com/bitbank2
 
+## Dependencies
+Arduino librairies
+ * UniversalTelegramBot
+ * bb_spi_lcd
+
 ## Advice 
 N.B
 The ESP32 partitioning (Tools menu) must be set to "No OTA" to fit this sketch
