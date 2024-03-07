@@ -11,19 +11,19 @@ on BLE Thermal Printers
 
 ## Links
 Brian Lough
-* GitHub: [Telegram Library written by Brian Lough](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot)
-* YouTube: https://www.youtube.com/brianlough
-* Tindie: https://www.tindie.com/stores/brianlough/
-* Twitter: https://twitter.com/witnessmenow
+* [GitHub Telegram Library](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot)
+* [YouTube](https://www.youtube.com/brianlough)
+* [Tindie](https://www.tindie.com/stores/brianlough)
+* [Twitter](https://twitter.com/witnessmenow)
 
-Larry Bank: Thermal Printer library written by Larry Bank
-* Twitter: https://twitter.com/fast_code_r_us
-* Github: https://github.com/bitbank2
+Larry Bank
+* [Github Thermal Printer library](https://github.com/bitbank2)
+* [Twitter](https://twitter.com/fast_code_r_us)
 
 ## Dependencies
 Arduino librairies
- * UniversalTelegramBot
- * bb_spi_lcd
+ * [UniversalTelegramBot](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot)
+ * [bb_spi_lcd](https://github.com/bitbank2/bb_spi_lcd)
 
 ## Advice 
 N.B
