@@ -1,6 +1,6 @@
 # M5StickC Telegram bot
 
-A telegram bot for your ESP32 [M5StickC](https://shop.m5stack.com/products/stick-c) to print shopping or to-do lists
+A [Telegram bot](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot) for your ESP32 [M5StickC](https://shop.m5stack.com/products/stick-c) to print shopping or to-do lists
 on BLE Thermal Printers
 
 ## Arduino sketch
@@ -11,7 +11,7 @@ on BLE Thermal Printers
 
 ## Links
 Brian Lough
-* Telegram Library written by Brian Lough
+* GitHub: [Telegram Library written by Brian Lough](https://github.com/witnessmenow/Universal-Arduino-Telegram-Bot)
 * YouTube: https://www.youtube.com/brianlough
 * Tindie: https://www.tindie.com/stores/brianlough/
 * Twitter: https://twitter.com/witnessmenow
