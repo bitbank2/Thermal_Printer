@@ -82,6 +82,7 @@ const PRINTERID szPrinterIDs[] = {
 	{(char *)"PeriPage_", PRINTER_PERIPAGE},
 	{(char *)"T02", PRINTER_FOMEMO},
 	{(char *)"MX06", PRINTER_CAT},
+	{(char *)"MX10", PRINTER_CAT},
 	{NULL, 0}		// terminator
 };
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
