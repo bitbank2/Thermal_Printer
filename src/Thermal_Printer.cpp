@@ -32,7 +32,7 @@
 #endif
 #endif
 
-#ifdef ARDUINO_ARDUINO_NANO33BLE
+#if defined ( ARDUINO_ARDUINO_NANO33BLE ) || defined( ARDUINO_UNOR4_WIFI )
 #include <ArduinoBLE.h>
 #endif
 
@@ -46,8 +46,7 @@ static char szPrinterName[32];
 volatile uint8_t ucPrinterType; // one of PRINTER_MTP2, PRINTER_CAT, etc
 static int bb_width, bb_height; // back buffer width and height in pixels
 static int tp_wrap, bb_pitch;
-static int iCursorX = 0;
-static int iCursorY = 0;
+static int16_t iCursorX = 0, iCursorY = 0;
 static uint8_t bWithResponse = 0; // default to not wait for a response
 static uint8_t *pBackBuffer = NULL;
 static uint8_t bConnected = 0;
@@ -66,7 +65,8 @@ struct PRINTERID
   uint8_t ucBLEType;
 } ;
 // Names and types of supported printers
-const PRINTERID szPrinterIDs[] = {
+const PRINTERID szPrinterIDs[] PROGMEM = {
+        {(char *)"MP210", PRINTER_MTP2},
 	{(char *)"PT-210", PRINTER_MTP2},
 	{(char *)"MTP-2", PRINTER_MTP2},
 	{(char *)"MPT-II", PRINTER_MTP2},
@@ -120,7 +120,7 @@ uint8_t CatStrLen = 0;
 char CatStr[48];	// max 48 characters * 8 pixels
 
 //CRC8 pre calculated values
-const uint8_t cChecksumTable[] = {
+const uint8_t cChecksumTable[] PROGMEM = {
 	0x00, 0x07, 0x0e, 0x09, 0x1c, 0x1b, 0x12, 0x15,  0x38, 0x3f, 0x36, 0x31, 0x24, 0x23, 0x2a, 0x2d, 
 	0x70, 0x77, 0x7e, 0x79, 0x6c, 0x6b, 0x62, 0x65,  0x48, 0x4f, 0x46, 0x41, 0x54, 0x53, 0x5a, 0x5d, 
 	0xe0, 0xe7, 0xee, 0xe9, 0xfc, 0xfb, 0xf2, 0xf5,  0xd8, 0xdf, 0xd6, 0xd1, 0xc4, 0xc3, 0xca, 0xcd, 
@@ -139,7 +139,7 @@ const uint8_t cChecksumTable[] = {
 	0xde, 0xd9, 0xd0, 0xd7, 0xc2, 0xc5, 0xcc, 0xcb,  0xe6, 0xe1, 0xe8, 0xef, 0xfa, 0xfd, 0xf4, 0xf3};
 
 /* Table of byte flip values to mirror-image incoming CCITT data */
-const unsigned char ucMirror[256]=
+const unsigned char ucMirror[256] PROGMEM =
      {0x00, 0x80, 0x40, 0xC0, 0x20, 0xA0, 0x60, 0xE0, 0x10, 0x90, 0x50, 0xD0, 0x30, 0xB0, 0x70, 0xF0,
       0x08, 0x88, 0x48, 0xC8, 0x28, 0xA8, 0x68, 0xE8, 0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8,
       0x04, 0x84, 0x44, 0xC4, 0x24, 0xA4, 0x64, 0xE4, 0x14, 0x94, 0x54, 0xD4, 0x34, 0xB4, 0x74, 0xF4,
@@ -319,7 +319,7 @@ static BLEClient* pClient;
 static char Scanned_BLE_Name[32];
 #endif
 
-#ifdef ARDUINO_ARDUINO_NANO33BLE
+#ifdef _ARDUINO_BLE_H_
 static BLEDevice peripheral;
 static BLEService prtService;
 static BLECharacteristic pRemoteCharacteristicData;
@@ -866,7 +866,7 @@ int tpConnect(const char *szMacAddress)
     }
   return 0;
 #endif
-#ifdef ARDUINO_ARDUINO_NANO33BLE // Arduino BLE
+#ifdef _ARDUINO_BLE_H_ // Arduino BLE
     if (!peripheral)
     {
 #ifdef DEBUG_OUTPUT
@@ -951,7 +951,7 @@ void tpDisconnect(void)
       bConnected = 0;
    }
 #endif
-#ifdef ARDUINO_ARDUINO_NANO33BLE
+#ifdef _ARDUINO_BLE_H_
     if (peripheral)
     {
         if (peripheral.connected())
@@ -1053,7 +1053,7 @@ int iLen = strlen(szName);
        }
     }
 #endif
-#ifdef ARDUINO_ARDUINO_NANO33BLE // Arduino API
+#ifdef _ARDUINO_BLE_H_ // Arduino API
     // initialize the BLE hardware
     BLE.begin();
     // start scanning for the printer service UUID
@@ -1190,7 +1190,7 @@ static void tpWriteData(uint8_t *pData, int iLen)
       pRemoteCharacteristicData->writeValue(pData, iLen, bWithResponse);
     }
 #endif
-#ifdef ARDUINO_ARDUINO_NANO33BLE
+#ifdef _ARDUINO_BLE_H_
     pRemoteCharacteristicData.writeValue(pData, iLen, bWithResponse);
 #endif
 #ifdef ARDUINO_NRF52_ADAFRUIT
