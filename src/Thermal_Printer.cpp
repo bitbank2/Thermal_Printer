@@ -799,7 +799,7 @@ int tpConnect(const char *szMacAddress)
        if (Server_BLE_Address != NULL) {
           delete Server_BLE_Address;
        }
-       Server_BLE_Address = new BLEAddress(std::string(szMacAddress));
+       Server_BLE_Address = new BLEAddress(String(szMacAddress));
 #ifdef DEBUG_OUTPUT
        Serial.printf(" - Created client, connecting to %s\n", szMacAddress);
 #endif
@@ -1322,7 +1322,7 @@ uint8_t modelQR[] = {0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00};
 // Hex      1D      28      6B      03      00      31      43      n
 // n depends on the printer
 // https://reference.epson-biz.com/modules/ref_escpos/index.php?content_id=141
-uint8_t sizeQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, iSize};
+uint8_t sizeQR[] = {0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, (uint8_t)iSize};
 
 //          Hex     1D      28      6B      03      00      31      45      n
 // Set n for error correction [48 x30 -> 7%] [49 x31-> 15%] [50 x32 -> 25%] [51 x33 -> 30%]
