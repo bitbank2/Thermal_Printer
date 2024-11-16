@@ -67,6 +67,7 @@ struct PRINTERID
 // Names and types of supported printers
 const PRINTERID szPrinterIDs[] PROGMEM = {
         {(char *)"MP210", PRINTER_MTP2},
+	{(char *)"MP583", PRINTER_MTP2},
 	{(char *)"PT-210", PRINTER_MTP2},
 	{(char *)"MTP-2", PRINTER_MTP2},
 	{(char *)"MPT-II", PRINTER_MTP2},
