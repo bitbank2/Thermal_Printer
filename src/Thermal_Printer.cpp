@@ -800,7 +800,7 @@ int tpConnect(const char *szMacAddress)
        if (Server_BLE_Address != NULL) {
           delete Server_BLE_Address;
        }
-       Server_BLE_Address = new BLEAddress(String(szMacAddress));
+       Server_BLE_Address = new BLEAddress(std::string(szMacAddress));
 #ifdef DEBUG_OUTPUT
        Serial.printf(" - Created client, connecting to %s\n", szMacAddress);
 #endif
