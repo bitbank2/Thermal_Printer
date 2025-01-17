@@ -1496,12 +1496,22 @@ void tpFeed(int iLines)
 {
 uint8_t ucTemp[16];
 
-  if (bConnected && iLines < 0 && iLines > -256 && ucPrinterType == PRINTER_CAT)
-     tpWriteCatCommandD8(paperRetract,abs(iLines));			// some cat printers support retrack. Not all :(
+  if (bConnected && iLines < 0 && iLines > -256 && ucPrinterType == PRINTER_CAT) {
+    // some cat printers support retrack. Not all :(
+    if (strcmp(szPrinterName, "MX10") == 0) {
+      tpWriteCatCommandD16(paperRetract,abs(iLines));
+    } else {
+      tpWriteCatCommandD8(paperRetract,abs(iLines));
+    }
+  }
   if (!bConnected || iLines < 0 || iLines > 255)
     return;
   if (ucPrinterType == PRINTER_CAT) {
-     tpWriteCatCommandD8(paperFeed,iLines);
+    if (strcmp(szPrinterName, "MX10") == 0) {
+      tpWriteCatCommandD16(paperFeed,iLines);
+    } else {
+      tpWriteCatCommandD8(paperFeed,iLines);
+    }
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
    // The PT-210 doesn't have a "feed-by-line" command
    // so instead, we'll send 1 byte-wide graphics of a blank segment
