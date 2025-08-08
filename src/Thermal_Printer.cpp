@@ -74,11 +74,12 @@ struct PRINTERID
 } ;
 // Names and types of supported printers
 const PRINTERID szPrinterIDs[] PROGMEM = {
-        {(char *)"MP210", PRINTER_MTP2},
+    {(char *)"MP210", PRINTER_MTP2},
 	{(char *)"MP583", PRINTER_MTP2},
 	{(char *)"PT-210", PRINTER_MTP2},
 	{(char *)"MTP-2", PRINTER_MTP2},
 	{(char *)"MPT-II", PRINTER_MTP2},
+	{(char *)"MTP-II", PRINTER_MTP2}, // Added this ID since the previous is most likely a typo
 	{(char *)"MPT-3", PRINTER_MTP3},
 	{(char *)"MPT-3F", PRINTER_MTP3},
 	{(char *)"GT01", PRINTER_CAT},
@@ -91,8 +92,7 @@ const PRINTERID szPrinterIDs[] PROGMEM = {
 	{(char *)"PeriPage_", PRINTER_PERIPAGE},
 	{(char *)"T02", PRINTER_FOMEMO},
 	{(char *)"MX06", PRINTER_CAT},
-	{(char *)"MX10", PRINTER_CAT},
-	{NULL, 0}		// terminator
+	{(char *)"MX10", PRINTER_CAT},	{NULL, 0}		// terminator
 };
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
@@ -308,8 +308,11 @@ static void ESP_notify_callback(
 #endif // ESP callback
 
 #ifdef HAL_ESP32_HAL_H_
-static BLEUUID SERVICE_UUID0("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
-static BLEUUID CHAR_UUID_DATA0 ("49535343-8841-43F4-A8D4-ECBE34729BB3");
+// Replace the original SERVICE_UUID0 and CHAR_UUID_DATA0 with the ones detected with "nRF Connect" app 
+static BLEUUID SERVICE_UUID0("e7810a71-73ae-499d-8c15-faa9aef0c3f2");
+static BLEUUID CHAR_UUID_DATA0 ("bef8d6c9-9c21-4c9e-b632-bd58c1009f9f");
+//static BLEUUID SERVICE_UUID0("49535343-FE7D-4AE5-8FA9-9FAFD205E455");
+//static BLEUUID CHAR_UUID_DATA0 ("49535343-8841-43F4-A8D4-ECBE34729BB3");
 //static BLEUUID SERVICE_UUID1("0000AE30-0000-1000-8000-00805F9B34FB"); //Service
 //static BLEUUID CHAR_UUID_DATA1("0000AE01-0000-1000-8000-00805F9B34FB"); // data characteristic
 static BLEUUID SERVICE_UUID1(BLEUUID ((uint16_t)0xae30));
