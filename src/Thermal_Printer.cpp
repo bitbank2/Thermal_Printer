@@ -23,22 +23,14 @@
 //#define DEBUG_OUTPUT
 
 // Two sets of code - one for ESP32
-
 #ifdef HAL_ESP32_HAL_H_
-#ifdef ARDUINO_USB_DFU_ON_BOOT
-// Ugly workaround for the Arduino Nano ESP32
-#undef HAL_ESP32_HAL_H_
-// from here on down, pretend we're a Nano 33 BLE since Arduino.cc
-// re-implemented all of the ESP32 BLE support to use the ArduinoBLE lib
-#define ARDUINO_ARDUINO_NANO33BLE
-#else // normal ESP32
+
 #ifdef NIMBLE_SUPPORT
 #include <NimBLEDevice.h>
 #else
 #include <BLEDevice.h>
 #endif
 #endif
-#endif // Nano ESP32
 
 #if defined ( ARDUINO_ARDUINO_NANO33BLE ) || defined( ARDUINO_UNOR4_WIFI )
 #include <ArduinoBLE.h>
@@ -75,7 +67,6 @@ struct PRINTERID
 // Names and types of supported printers
 const PRINTERID szPrinterIDs[] PROGMEM = {
         {(char *)"MP210", PRINTER_MTP2},
-	{(char *)"MP583", PRINTER_MTP2},
 	{(char *)"PT-210", PRINTER_MTP2},
 	{(char *)"MTP-2", PRINTER_MTP2},
 	{(char *)"MPT-II", PRINTER_MTP2},
@@ -92,6 +83,7 @@ const PRINTERID szPrinterIDs[] PROGMEM = {
 	{(char *)"T02", PRINTER_FOMEMO},
 	{(char *)"MX06", PRINTER_CAT},
 	{(char *)"MX10", PRINTER_CAT},
+   {(char *)"T58_A139", PRINTER_MTP2},
 	{NULL, 0}		// terminator
 };
 const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
@@ -1504,22 +1496,12 @@ void tpFeed(int iLines)
 {
 uint8_t ucTemp[16];
 
-  if (bConnected && iLines < 0 && iLines > -256 && ucPrinterType == PRINTER_CAT) {
-    // some cat printers support retrack. Not all :(
-    if (strcmp(szPrinterName, "MX10") == 0) {
-      tpWriteCatCommandD16(paperRetract,abs(iLines));
-    } else {
-      tpWriteCatCommandD8(paperRetract,abs(iLines));
-    }
-  }
+  if (bConnected && iLines < 0 && iLines > -256 && ucPrinterType == PRINTER_CAT)
+     tpWriteCatCommandD8(paperRetract,abs(iLines));			// some cat printers support retrack. Not all :(
   if (!bConnected || iLines < 0 || iLines > 255)
     return;
   if (ucPrinterType == PRINTER_CAT) {
-    if (strcmp(szPrinterName, "MX10") == 0) {
-      tpWriteCatCommandD16(paperFeed,iLines);
-    } else {
-      tpWriteCatCommandD8(paperFeed,iLines);
-    }
+     tpWriteCatCommandD8(paperFeed,iLines);
   } else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3) {
    // The PT-210 doesn't have a "feed-by-line" command
    // so instead, we'll send 1 byte-wide graphics of a blank segment
