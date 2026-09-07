@@ -49,6 +49,7 @@
 #endif
 
 #include "Thermal_Printer.h"
+#include "mxw01_protocol.h"
 
 static char szPrinterName[32];
 volatile uint8_t ucPrinterType; // one of PRINTER_MTP2, PRINTER_CAT, etc
@@ -66,6 +67,14 @@ static uint8_t tpFindPrinterName(char *szName);
 static void tpPreGraphics(int iWidth, int iHeight);
 static void tpPostGraphics(void);
 static void tpSendScanline(uint8_t *pSrc, int iLen);
+struct MXW01NotificationSlot;
+static void mxw01HandleNotification(const uint8_t *pData, size_t iLen);
+static void mxw01WriteControl(const uint8_t *pData, size_t iLen);
+static void mxw01WriteImageData(const uint8_t *pData, size_t iLen);
+static int mxw01WaitForNotification(MXW01NotificationSlot *pSlot,
+                                     unsigned long timeoutMs);
+static int mxw01BeginPrint(int iWidth, int iHeight);
+static void mxw01FinishPrint(void);
 
 struct PRINTERID
 {
@@ -92,12 +101,19 @@ const PRINTERID szPrinterIDs[] PROGMEM = {
 	{(char *)"T02", PRINTER_FOMEMO},
 	{(char *)"MX06", PRINTER_CAT},
 	{(char *)"MX10", PRINTER_CAT},
+	{(char *)"MXW01", PRINTER_MXW01},
 	{NULL, 0}		// terminator
 };
-const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384};
+const int iPrinterWidth[] = {384, 576, 384, 576, 384, 384, 384};
 const uint8_t PeriPrefix[] = {0x10,0xff,0xfe,0x01};
-const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00"}; // 16-bit UUID of the printer services we want
-const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02", (char *)"ff02"}; // 16-bit UUID of printer data characteristics we want
+const char *szServiceNames[] = {(char *)"18f0", (char *)"18f0", (char *)"ae30", (char *)"ff00",(char *)"ff00", (char *)"ff00", (char *)"ae30"}; // 16-bit UUID of the printer services we want
+const char *szCharNames[] = {(char *)"2af1", (char *)"2af1", (char *)"ae01",(char *)"ff02", (char *)"ff02", (char *)"ff02", (char *)"ae03"}; // 16-bit UUID of printer data characteristics we want
+static_assert(sizeof(iPrinterWidth) / sizeof(iPrinterWidth[0]) == PRINTER_COUNT,
+              "printer width table is out of sync");
+static_assert(sizeof(szServiceNames) / sizeof(szServiceNames[0]) == PRINTER_COUNT,
+              "printer service table is out of sync");
+static_assert(sizeof(szCharNames) / sizeof(szCharNames[0]) == PRINTER_COUNT,
+              "printer characteristic table is out of sync");
 
 // Command sequences for the 'cat' printer
 // for more details see https://github.com/fulda1/Thermal_Printer/wiki/Cat-printer-protocol
@@ -127,6 +143,25 @@ int i;
 // variables for printing text on cat printer
 uint8_t CatStrLen = 0;
 char CatStr[48];	// max 48 characters * 8 pixels
+
+#define MXW01_NOTIFICATION_PAYLOAD_CAPACITY 32
+#define MXW01_NOTIFICATION_TIMEOUT_MS 7000UL
+#define MXW01_DATA_PACING_MS 15
+
+struct MXW01NotificationSlot {
+  volatile uint8_t received;
+  volatile uint16_t payloadLength;
+  uint8_t payload[MXW01_NOTIFICATION_PAYLOAD_CAPACITY];
+};
+
+static MXW01NotificationSlot mxw01StatusNotification = {0, 0, {0}};
+static MXW01NotificationSlot mxw01PrintNotification = {0, 0, {0}};
+static MXW01NotificationSlot mxw01CompleteNotification = {0, 0, {0}};
+static uint8_t mxw01Intensity = 0x5D;
+static uint16_t mxw01ExpectedLines = 0;
+static uint16_t mxw01SentLines = 0;
+static uint8_t mxw01JobActive = 0;
+static uint8_t mxw01LastJobSucceeded = 0;
 
 //CRC8 pre calculated values
 const uint8_t cChecksumTable[] PROGMEM = {
@@ -177,6 +212,8 @@ static int bNRFFound;
 //BLEClientService myService(myServiceUUID);
 BLEClientService myService; //(0x18f0);
 BLEClientCharacteristic myDataChar; //(0x2af1);
+BLEClientCharacteristic myControlChar;
+BLEClientCharacteristic myNotifyChar;
 
 /**
  * Callback invoked when an connection is established
@@ -209,6 +246,16 @@ static void connect_callback(uint16_t conn_handle)
 #endif
     Bluefruit.disconnect(conn_handle);
     return;
+  }
+  if (ucPrinterType == PRINTER_MXW01) {
+    if (!myControlChar.discover() || !myNotifyChar.discover() ||
+        !myNotifyChar.enableNotify()) {
+#ifdef DEBUG_OUTPUT
+      Serial.println("MXW01 control/notify characteristics not found");
+#endif
+      Bluefruit.disconnect(conn_handle);
+      return;
+    }
   }
     bConnected = 1; // success!
 } /* connect_callback() */
@@ -262,7 +309,7 @@ char szTemp[32];
        Serial.println(szTemp);
 #endif
     ucPrinterType = tpFindPrinterName(szTemp);
-    if (ucPrinterType > PRINTER_COUNT) { // nothing supported found
+    if (ucPrinterType >= PRINTER_COUNT) { // nothing supported found
        Bluefruit.Scanner.resume();
     } else { // we can stop scanning
       bNRFFound = 1;
@@ -283,6 +330,8 @@ char szTemp[32];
 
 static void notify_callback(BLEClientCharacteristic* chr, uint8_t* data, uint16_t len)
 {
+  (void)chr;
+  mxw01HandleNotification(data, len);
 } /* notify_callback() */
 
 #endif // Adafruit nrf52
@@ -293,6 +342,7 @@ static void ESP_notify_callback(
   uint8_t* pData,
   size_t length,
   bool isNotify) {
+#ifdef DEBUG_OUTPUT
     Serial.print("Notify callback for characteristic ");
     Serial.print(pBLERemoteCharacteristic->getUUID().toString().c_str());
     Serial.print(" of data length ");
@@ -304,6 +354,11 @@ static void ESP_notify_callback(
       Serial.print(" ");
     }
     Serial.println(" ");
+#else
+    (void)pBLERemoteCharacteristic;
+    (void)isNotify;
+#endif
+    mxw01HandleNotification(pData, length);
 }
 #endif // ESP callback
 
@@ -317,11 +372,16 @@ static BLEUUID CHAR_UUID_DATA1(BLEUUID((uint16_t)0xae01));
 static BLEUUID CHAR_UUID_NOTIFY1(BLEUUID((uint16_t)0xae02));
 static BLEUUID SERVICE_UUID2(BLEUUID ((uint16_t)0xff00));
 static BLEUUID CHAR_UUID_DATA2(BLEUUID((uint16_t)0xff02));
+static BLEUUID SERVICE_UUID_MXW01_ALT(BLEUUID ((uint16_t)MXW01_SERVICE_UUID_ALT));
+static BLEUUID CHAR_UUID_MXW01_CONTROL(BLEUUID((uint16_t)MXW01_CONTROL_CHARACTERISTIC_UUID));
+static BLEUUID CHAR_UUID_MXW01_NOTIFY(BLEUUID((uint16_t)MXW01_NOTIFY_CHARACTERISTIC_UUID));
+static BLEUUID CHAR_UUID_MXW01_DATA(BLEUUID((uint16_t)MXW01_DATA_CHARACTERISTIC_UUID));
 
 static String Scanned_BLE_Address;
 static BLEScanResults foundDevices;
 static BLEAddress *Server_BLE_Address;
 static BLERemoteCharacteristic* pRemoteCharacteristicData;
+static BLERemoteCharacteristic* pRemoteCharacteristicControl;
 static BLERemoteCharacteristic* pRemoteCharacteristicNotify;
 static BLEScan *pBLEScan;
 static BLEClient* pClient;
@@ -332,6 +392,8 @@ static char Scanned_BLE_Name[32];
 static BLEDevice peripheral;
 static BLEService prtService;
 static BLECharacteristic pRemoteCharacteristicData;
+static BLECharacteristic pRemoteCharacteristicControl;
+static BLECharacteristic pRemoteCharacteristicNotify;
 #endif
 
 void tpSetWriteMode(uint8_t bWriteMode)
@@ -543,7 +605,7 @@ int iPrintWidth = iPrinterWidth[ucPrinterType];
 
    if (!bConnected)
       return -1;
-   if (pFont == NULL || x < 0)
+   if (pFont == NULL || startx < 0)
       return -1;
    pGlyph = &glyph;
 
@@ -551,7 +613,7 @@ int iPrintWidth = iPrinterWidth[ucPrinterType];
 //   tpGetStringBox(pFont, szMsg, &tx, &miny, &maxy);
 //   height = (maxy - miny) + 1;
 
-   tpPreGraphics(iPrintWidth, pFont->yAdvance);
+   tpPreGraphics(iPrintWidth, pFont->yAdvance + 1);
    miny = 0 - (pFont->yAdvance * 2)/3; // 2/3 of char is above the baseline
    maxy = pFont->yAdvance + miny;
    for (y=miny; y<=maxy; y++)
@@ -808,7 +870,7 @@ int tpConnect(const char *szMacAddress)
        if (Server_BLE_Address != NULL) {
           delete Server_BLE_Address;
        }
-       Server_BLE_Address = new BLEAddress(String(szMacAddress));
+       Server_BLE_Address = new BLEAddress(std::string(szMacAddress));
 #ifdef DEBUG_OUTPUT
        Serial.printf(" - Created client, connecting to %s\n", szMacAddress);
 #endif
@@ -835,6 +897,13 @@ int tpConnect(const char *szMacAddress)
        pRemoteService = pClient->getService(SERVICE_UUID1);
     else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
        pRemoteService = pClient->getService(SERVICE_UUID2);
+    else if (ucPrinterType == PRINTER_MXW01) {
+       pRemoteService = pClient->getService(SERVICE_UUID1);
+       if (pRemoteService == NULL) {
+          // TODO(MXW01): AF30 is reported by some hosts; confirm on ESP32 hardware.
+          pRemoteService = pClient->getService(SERVICE_UUID_MXW01_ALT);
+       }
+    }
     if (pRemoteService != NULL)
     {
 #ifdef DEBUG_OUTPUT
@@ -843,6 +912,8 @@ int tpConnect(const char *szMacAddress)
       if (pClient->isConnected())
       {
         pRemoteCharacteristicData = NULL;
+        pRemoteCharacteristicControl = NULL;
+        pRemoteCharacteristicNotify = NULL;
         if (ucPrinterType == PRINTER_MTP2 || ucPrinterType == PRINTER_MTP3)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA0);
         else if (ucPrinterType == PRINTER_CAT)
@@ -852,14 +923,31 @@ int tpConnect(const char *szMacAddress)
           }
         else if (ucPrinterType == PRINTER_FOMEMO || ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS)
           pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_DATA2);
-        if (pRemoteCharacteristicData != NULL)
+        else if (ucPrinterType == PRINTER_MXW01) {
+          pRemoteCharacteristicControl = pRemoteService->getCharacteristic(CHAR_UUID_MXW01_CONTROL);
+          pRemoteCharacteristicNotify = pRemoteService->getCharacteristic(CHAR_UUID_MXW01_NOTIFY);
+          pRemoteCharacteristicData = pRemoteService->getCharacteristic(CHAR_UUID_MXW01_DATA);
+        }
+        if (pRemoteCharacteristicData != NULL &&
+            (ucPrinterType != PRINTER_MXW01 ||
+             (pRemoteCharacteristicControl != NULL && pRemoteCharacteristicNotify != NULL)))
         {
 #ifdef DEBUG_OUTPUT
           Serial.println("Got data transfer characteristic!");
 #endif
-          if (pRemoteCharacteristicNotify != NULL)
-            if(pRemoteCharacteristicNotify->canNotify())
-              pRemoteCharacteristicNotify->registerForNotify(ESP_notify_callback);
+          if (pRemoteCharacteristicNotify != NULL) {
+            if (!pRemoteCharacteristicNotify->canNotify())
+              return 0;
+            if (ucPrinterType == PRINTER_MXW01) {
+              BLERemoteDescriptor *pCccd =
+                  pRemoteCharacteristicNotify->getDescriptor(
+                      BLEUUID((uint16_t)0x2902));
+              Serial.printf("[MXW01] AE02 handle=0x%04X, CCCD %s\n",
+                            pRemoteCharacteristicNotify->getHandle(),
+                            pCccd != NULL ? "found" : "not found");
+            }
+            pRemoteCharacteristicNotify->registerForNotify(ESP_notify_callback);
+          }
 
           bConnected = 1;
           return 1;
@@ -894,7 +982,12 @@ int tpConnect(const char *szMacAddress)
         Serial.println("Connected!");
 #endif
         // you MUST discover the service or you won't be able to access it
-        if (peripheral.discoverService(szServiceNames[ucPrinterType])) {
+        bool serviceDiscovered = peripheral.discoverService(szServiceNames[ucPrinterType]);
+        if (!serviceDiscovered && ucPrinterType == PRINTER_MXW01) {
+          // TODO(MXW01): Confirm whether ArduinoBLE exposes the alternative AF30 UUID.
+          serviceDiscovered = peripheral.discoverService("af30");
+        }
+        if (serviceDiscovered) {
 #ifdef DEBUG_OUTPUT
           Serial.print("Service 0x");
           Serial.print(szServiceNames[ucPrinterType]);
@@ -905,20 +998,29 @@ int tpConnect(const char *szMacAddress)
           Serial.println("Service discovery failed");
 #endif
           peripheral.disconnect();
-          while (1);
+          return 0;
         }
         // Obtain a reference to the service we are after in the remote BLE server.
 #ifdef DEBUG_OUTPUT
         Serial.println("Trying to get service");
 #endif
         prtService = peripheral.service(szServiceNames[ucPrinterType]); // get the printer service
+        if (!prtService && ucPrinterType == PRINTER_MXW01)
+          prtService = peripheral.service("af30");
         if (prtService)
         {
 #ifdef DEBUG_OUTPUT
             Serial.println("Got the service");
 #endif
             pRemoteCharacteristicData = prtService.characteristic(szCharNames[ucPrinterType]);
-            if (pRemoteCharacteristicData)
+            if (ucPrinterType == PRINTER_MXW01) {
+              pRemoteCharacteristicControl = prtService.characteristic("ae01");
+              pRemoteCharacteristicNotify = prtService.characteristic("ae02");
+            }
+            if (pRemoteCharacteristicData &&
+                (ucPrinterType != PRINTER_MXW01 ||
+                 (pRemoteCharacteristicControl && pRemoteCharacteristicNotify &&
+                  pRemoteCharacteristicNotify.subscribe())))
             {
 #ifdef DEBUG_OUTPUT
                 Serial.println("Got the characteristic");
@@ -953,6 +1055,10 @@ int tpConnect(const char *szMacAddress)
 void tpDisconnect(void)
 {
   if (!bConnected) return; // nothing to do
+  mxw01JobActive = 0;
+  mxw01StatusNotification.received = 0;
+  mxw01PrintNotification.received = 0;
+  mxw01CompleteNotification.received = 0;
 #ifdef HAL_ESP32_HAL_H_
    if (pClient != NULL)
    {
@@ -984,10 +1090,15 @@ static uint8_t tpFindPrinterName(char *szName)
 {
 int i = 0;
 
-   szName[9] = 0; // Need to chop off the name after 'PeriPage+'
-                  // because it includes 2 bytes of the BLE MAC address
+   if (szName == NULL)
+      return 255;
    while (szPrinterIDs[i].szBLEName != NULL) {
-     if (strcmp(szName, szPrinterIDs[i].szBLEName) == 0) { // found a supported printer
+     bool matches;
+     if (strcmp(szPrinterIDs[i].szBLEName, "PeriPage+") == 0)
+       matches = strncmp(szName, szPrinterIDs[i].szBLEName, 9) == 0;
+     else
+       matches = strcmp(szName, szPrinterIDs[i].szBLEName) == 0;
+     if (matches) { // found a supported printer
 #ifdef DEBUG_OUTPUT
      Serial.print("Found a match for ");
      Serial.println(szName);
@@ -1163,13 +1274,26 @@ int iLen = strlen(szName);
   } else if (ucPrinterType == PRINTER_PERIPAGE || ucPrinterType == PRINTER_PERIPAGEPLUS) {
     myService = BLEClientService(0xff00);
     myDataChar = BLEClientCharacteristic(0xff02);
+  } else if (ucPrinterType == PRINTER_FOMEMO) {
+    myService = BLEClientService(0xff00);
+    myDataChar = BLEClientCharacteristic(0xff02);
+  } else if (ucPrinterType == PRINTER_MXW01) {
+    // TODO(MXW01): Bluefruit currently tries AE30 only; validate AF30 fallback need.
+    myService = BLEClientService(MXW01_SERVICE_UUID);
+    myControlChar = BLEClientCharacteristic(MXW01_CONTROL_CHARACTERISTIC_UUID);
+    myNotifyChar = BLEClientCharacteristic(MXW01_NOTIFY_CHARACTERISTIC_UUID);
+    myDataChar = BLEClientCharacteristic(MXW01_DATA_CHARACTERISTIC_UUID);
   }
 
     myService.begin(); // start my client service
     // Initialize client characteristics
     // Note: Client Chars will be added to the last service that is begin()ed.
-    myDataChar.setNotifyCallback(notify_callback);
     myDataChar.begin();
+    if (ucPrinterType == PRINTER_MXW01) {
+      myControlChar.begin();
+      myNotifyChar.setNotifyCallback(notify_callback);
+      myNotifyChar.begin();
+    }
     // Callbacks for Central
     Bluefruit.Central.setConnectCallback(connect_callback);
     Bluefruit.Central.setDisconnectCallback(disconnect_callback);
@@ -1177,6 +1301,123 @@ int iLen = strlen(szName);
 #endif // ADAFRUIT
     return bFound;
 } /* tpScan() */
+
+static MXW01NotificationSlot *mxw01NotificationSlot(uint8_t commandId)
+{
+  if (commandId == MXW01_COMMAND_GET_STATUS)
+    return &mxw01StatusNotification;
+  if (commandId == MXW01_COMMAND_PRINT)
+    return &mxw01PrintNotification;
+  if (commandId == MXW01_COMMAND_PRINT_COMPLETE)
+    return &mxw01CompleteNotification;
+  return NULL;
+}
+
+static void mxw01HandleNotification(const uint8_t *pData, size_t iLen)
+{
+  mxw01_notification_t notification;
+  MXW01NotificationSlot *pSlot;
+  size_t copyLength;
+
+  if (ucPrinterType != PRINTER_MXW01 ||
+      mxw01_parse_notification(pData, iLen, &notification) != MXW01_PROTOCOL_OK)
+    return;
+
+  pSlot = mxw01NotificationSlot(notification.command_id);
+  if (pSlot == NULL)
+    return;
+
+  copyLength = notification.payload_length;
+  if (copyLength > sizeof(pSlot->payload))
+    copyLength = sizeof(pSlot->payload);
+  if (copyLength != 0)
+    memcpy(pSlot->payload, notification.payload, copyLength);
+  pSlot->payloadLength = (uint16_t)copyLength;
+  pSlot->received = 1;
+  Serial.printf("[MXW01] Notification 0x%02X received (%u bytes)\n",
+                notification.command_id, (unsigned)copyLength);
+  Serial.print("[MXW01] Payload:");
+  for (size_t i = 0; i < copyLength; ++i)
+    Serial.printf(" %02X", pSlot->payload[i]);
+  Serial.println();
+}
+
+static void mxw01PollNotifications(void)
+{
+#ifdef _ARDUINO_BLE_H_
+  BLE.poll();
+  if (pRemoteCharacteristicNotify &&
+      pRemoteCharacteristicNotify.valueUpdated()) {
+    uint8_t packet[64];
+    int packetLength = pRemoteCharacteristicNotify.valueLength();
+    if (packetLength > (int)sizeof(packet))
+      packetLength = sizeof(packet);
+    if (packetLength > 0 &&
+        pRemoteCharacteristicNotify.readValue(packet, packetLength))
+      mxw01HandleNotification(packet, (size_t)packetLength);
+  }
+#endif
+}
+
+static int mxw01WaitForNotification(MXW01NotificationSlot *pSlot,
+                                     unsigned long timeoutMs)
+{
+  unsigned long start = millis();
+  while (bConnected && !pSlot->received &&
+         (millis() - start) < timeoutMs) {
+    mxw01PollNotifications();
+    delay(5);
+  }
+  return pSlot->received ? 1 : 0;
+}
+
+static void mxw01WriteControl(const uint8_t *pData, size_t iLen)
+{
+  if (!bConnected || ucPrinterType != PRINTER_MXW01 || pData == NULL)
+    return;
+#ifdef HAL_ESP32_HAL_H_
+  if (pRemoteCharacteristicControl != NULL)
+    pRemoteCharacteristicControl->writeValue((uint8_t *)pData, iLen, false);
+#endif
+#ifdef _ARDUINO_BLE_H_
+  if (pRemoteCharacteristicControl)
+    pRemoteCharacteristicControl.writeValue(pData, iLen, false);
+#endif
+#ifdef ARDUINO_NRF52_ADAFRUIT
+  myControlChar.write((const void *)pData, (uint16_t)iLen);
+#endif
+}
+
+static void mxw01WriteImageData(const uint8_t *pData, size_t iLen)
+{
+  if (!bConnected || ucPrinterType != PRINTER_MXW01 || pData == NULL)
+    return;
+
+  /*
+   * The existing ESP32 transport is only reliable with <=20-byte GATT writes.
+   * MXW01 data is a byte stream, so a 48-byte row is sent as 20/20/8 bytes.
+   * TODO(MXW01): Confirm on hardware that no firmware requires atomic rows.
+   */
+  while (iLen != 0) {
+    size_t chunkLength = iLen > 20u ? 20u : iLen;
+#ifdef HAL_ESP32_HAL_H_
+    if (pRemoteCharacteristicData != NULL)
+      pRemoteCharacteristicData->writeValue((uint8_t *)pData, chunkLength, false);
+#endif
+#ifdef _ARDUINO_BLE_H_
+    if (pRemoteCharacteristicData)
+      pRemoteCharacteristicData.writeValue(pData, chunkLength, false);
+#endif
+#ifdef ARDUINO_NRF52_ADAFRUIT
+    myDataChar.write((const void *)pData, (uint16_t)chunkLength);
+#endif
+    pData += chunkLength;
+    iLen -= chunkLength;
+    if (iLen != 0)
+      delay(2);
+  }
+  delay(MXW01_DATA_PACING_MS);
+}
 //
 // Write data to the printer over BLE
 //
@@ -1300,6 +1541,8 @@ uint8_t ucTemp[4];
 
     if (!bConnected || ucAlign < ALIGN_LEFT || ucAlign > ALIGN_RIGHT)
        return; // invalid
+    if (ucPrinterType == PRINTER_MXW01)
+       return; // MXW01 has no known native text/barcode alignment command
     ucTemp[0] = 0x1b; // ESC
     ucTemp[1] = 'a';
     ucTemp[2] = ucAlign;
@@ -1370,7 +1613,7 @@ uint8_t ucTemp[128];
 uint8_t len;
 int i=0;
 
-   if (!bConnected || szData == NULL) return;
+   if (!bConnected || szData == NULL || ucPrinterType == PRINTER_MXW01) return;
    len = (uint8_t)strlen(szData);
    ucTemp[i++] = 0x1d; ucTemp[i++] = 0x48; ucTemp[i++] = (uint8_t)iTextPos;
    ucTemp[i++] = 0x1d; ucTemp[i++] = 0x68; ucTemp[i++] = (uint8_t)iHeight;
@@ -1386,8 +1629,26 @@ int i=0;
 // no parameters needed, text is taken from global variables
 // uint8_t CatStrLen = 0;
 // char CatStr[48];
-void tpPrintCatTextLine()
+int tpPrintCatTextLine()
 {
+    if (ucPrinterType == PRINTER_MXW01) {
+      uint8_t row[MXW01_BYTES_PER_ROW];
+      mxw01LastJobSucceeded = 0;
+      tpPreGraphics(MXW01_PRINTER_WIDTH_PIXELS, 8);
+      if (!mxw01JobActive) {
+        CatStrLen = 0;
+        return 0;
+      }
+      for (int j = 0; j < 8; ++j) {
+        memset(row, 0, sizeof(row));
+        for (int i = 0; i < CatStrLen; ++i)
+          row[i] = pgm_read_byte(&ucFont[((CatStr[i] - 32) * 8) + j]);
+        tpSendScanline(row, sizeof(row));
+      }
+      tpPostGraphics();
+      CatStrLen = 0;
+      return mxw01LastJobSucceeded;
+    }
     //tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));
     tpWriteCatCommandD8(setDrawingMode,1);					// Derawing mode 1 = Text 
      uint8_t ucTemp[56];
@@ -1407,6 +1668,7 @@ void tpPrintCatTextLine()
      }
     //tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
      CatStrLen=0;
+     return 1;
 }
 // tpPrintCatTextLine
 
@@ -1426,7 +1688,7 @@ int iLen;
   if (!bConnected || pString == NULL)
     return 0;
 
-  if (ucPrinterType == PRINTER_CAT) {
+  if (ucPrinterType == PRINTER_CAT || ucPrinterType == PRINTER_MXW01) {
      
      iLen = strlen(pString);
      for (int i = 0; i<iLen; i++)
@@ -1434,12 +1696,14 @@ int iLen;
          if (pString[i] == '\n') 
          {
              if (CatStrLen==0) {CatStrLen=1;CatStr[0]=' ';}
-             tpPrintCatTextLine();
+             if (!tpPrintCatTextLine())
+               return 0;
          }
          if (pString[i] >= ' ') 
          {
              CatStr[CatStrLen++]=pString[i];
-             if (CatStrLen==48) tpPrintCatTextLine();	// check for line wrap;
+             if (CatStrLen==48 && !tpPrintCatTextLine())
+               return 0; // check for line wrap
          }
      }
      return 1;
@@ -1472,8 +1736,7 @@ int tpPrintLine(char *pString)
   if (tpPrint(pString))
   {
     char cTemp[4] = {0xa, 0};
-    tpPrint((char *)cTemp);
-    return 1;
+    return tpPrint((char *)cTemp);
   }
   return 0;
 } /* tpPrintLine() */
@@ -1514,7 +1777,14 @@ uint8_t ucTemp[16];
   }
   if (!bConnected || iLines < 0 || iLines > 255)
     return;
-  if (ucPrinterType == PRINTER_CAT) {
+  if (ucPrinterType == PRINTER_MXW01) {
+    uint8_t blankRow[MXW01_BYTES_PER_ROW] = {0};
+    /* TODO(MXW01): This inherits the tentative 90-row minimum. Confirm feed. */
+    tpPreGraphics(MXW01_PRINTER_WIDTH_PIXELS, iLines);
+    for (int i = 0; i < iLines; ++i)
+      tpSendScanline(blankRow, sizeof(blankRow));
+    tpPostGraphics();
+  } else if (ucPrinterType == PRINTER_CAT) {
     if (strcmp(szPrinterName, "MX10") == 0) {
       tpWriteCatCommandD16(paperFeed,iLines);
     } else {
@@ -1535,6 +1805,139 @@ uint8_t ucTemp[16];
    }
   }
 } /* tpFeed() */
+
+int tpGetStatus(void)
+{
+  uint8_t packet[MXW01_MAX_KNOWN_CONTROL_PACKET_SIZE];
+  size_t packetLength = 0;
+
+  if (!bConnected || ucPrinterType != PRINTER_MXW01)
+    return 0;
+
+  mxw01StatusNotification.received = 0;
+  mxw01StatusNotification.payloadLength = 0;
+  if (mxw01_build_get_status_command(packet, sizeof(packet), &packetLength) !=
+      MXW01_PROTOCOL_OK)
+    return 0;
+
+  mxw01WriteControl(packet, packetLength);
+  return mxw01WaitForNotification(&mxw01StatusNotification,
+                                   MXW01_NOTIFICATION_TIMEOUT_MS);
+}
+
+static int mxw01BeginPrint(int iWidth, int iHeight)
+{
+  uint8_t packet[MXW01_MAX_KNOWN_CONTROL_PACKET_SIZE];
+  size_t packetLength = 0;
+  uint32_t requestedLines;
+
+  mxw01JobActive = 0;
+  mxw01LastJobSucceeded = 0;
+  mxw01SentLines = 0;
+  if (!bConnected || iWidth != (int)MXW01_PRINTER_WIDTH_PIXELS ||
+      iHeight <= 0) {
+    Serial.println("[MXW01] Invalid print job parameters");
+    return 0;
+  }
+
+  requestedLines = (uint32_t)iHeight;
+  /* TODO(MXW01): Verify the 90-row minimum; the Python driver is uncertain. */
+  if (requestedLines < MXW01_MIN_PRINT_LINES)
+    requestedLines = MXW01_MIN_PRINT_LINES;
+  if (requestedLines > UINT16_MAX) {
+    Serial.println("[MXW01] Print job is too tall");
+    return 0;
+  }
+  mxw01ExpectedLines = (uint16_t)requestedLines;
+  Serial.printf("[MXW01] Starting %u-line print job\n",
+                (unsigned)mxw01ExpectedLines);
+
+  if (mxw01_build_set_intensity_command(mxw01Intensity, packet,
+                                          sizeof(packet), &packetLength) !=
+      MXW01_PROTOCOL_OK)
+    return 0;
+  mxw01WriteControl(packet, packetLength);
+  delay(100);
+
+  if (!tpGetStatus()) {
+    Serial.println("[MXW01] Timeout waiting for status response (A1)");
+    return 0;
+  }
+
+  /*
+   * TODO(MXW01): Payload offsets are based on observed A1 responses. Confirm
+   * them across firmware versions before exposing detailed public errors.
+   */
+  if (mxw01StatusNotification.payloadLength >= 13 &&
+      mxw01StatusNotification.payload[12] != 0) {
+    Serial.printf("[MXW01] Printer is not ready, status=0x%02X\n",
+                  mxw01StatusNotification.payload[12]);
+    return 0;
+  }
+  if (mxw01StatusNotification.payloadLength < 13)
+    Serial.println("[MXW01] Short status format; continuing with print request");
+  else
+    Serial.println("[MXW01] Printer status is OK");
+
+  mxw01PrintNotification.received = 0;
+  mxw01PrintNotification.payloadLength = 0;
+  if (mxw01_build_print_command(mxw01ExpectedLines, packet,
+                                 sizeof(packet), &packetLength) !=
+      MXW01_PROTOCOL_OK)
+    return 0;
+  mxw01WriteControl(packet, packetLength);
+  if (!mxw01WaitForNotification(&mxw01PrintNotification,
+                                 MXW01_NOTIFICATION_TIMEOUT_MS)) {
+    Serial.println("[MXW01] Timeout waiting for print response (A9)");
+    return 0;
+  }
+  if (mxw01PrintNotification.payloadLength == 0 ||
+      mxw01PrintNotification.payload[0] != 0) {
+    Serial.println("[MXW01] Printer rejected print request (A9)");
+    return 0;
+  }
+
+  mxw01JobActive = 1;
+  Serial.println("[MXW01] Print request accepted");
+  return 1;
+}
+
+static void mxw01FinishPrint(void)
+{
+  uint8_t packet[MXW01_MAX_KNOWN_CONTROL_PACKET_SIZE];
+  uint8_t blankRow[MXW01_BYTES_PER_ROW] = {0};
+  size_t packetLength = 0;
+  unsigned long completionTimeout;
+
+  if (!mxw01JobActive)
+    return;
+
+  while (mxw01SentLines < mxw01ExpectedLines) {
+    mxw01WriteImageData(blankRow, sizeof(blankRow));
+    ++mxw01SentLines;
+  }
+  Serial.printf("[MXW01] Sent %u image rows\n", (unsigned)mxw01SentLines);
+
+  /* More data than announced is a caller error, but still flush the stream. */
+  // TODO(MXW01): Add a public error result without breaking the current API.
+  mxw01CompleteNotification.received = 0;
+  mxw01CompleteNotification.payloadLength = 0;
+  if (mxw01_build_flush_command(packet, sizeof(packet), &packetLength) ==
+      MXW01_PROTOCOL_OK) {
+    mxw01WriteControl(packet, packetLength);
+    delay(100);
+    completionTimeout = 15000UL +
+                        ((unsigned long)mxw01ExpectedLines * 1000UL) / 15UL;
+    if (mxw01WaitForNotification(&mxw01CompleteNotification,
+                                 completionTimeout))
+      Serial.println("[MXW01] Print complete (AA)");
+    else
+      Serial.println("[MXW01] Print data sent, but completion response timed out");
+    mxw01LastJobSucceeded = 1;
+  }
+  mxw01JobActive = 0;
+}
+
 //
 // tpSetEnergy Set Energy - switch between eco and nice images :) 
 //
@@ -1542,6 +1945,20 @@ void tpSetEnergy(int iEnergy)
 {
   if (bConnected && ucPrinterType == PRINTER_CAT)
      tpWriteCatCommandD16(setEnergy,iEnergy);
+  else if (ucPrinterType == PRINTER_MXW01) {
+    uint8_t packet[MXW01_MAX_KNOWN_CONTROL_PACKET_SIZE];
+    size_t packetLength = 0;
+    if (iEnergy < 0)
+      iEnergy = 0;
+    else if (iEnergy > 255)
+      iEnergy = 255;
+    mxw01Intensity = (uint8_t)iEnergy;
+    if (bConnected &&
+        mxw01_build_set_intensity_command(mxw01Intensity, packet,
+                                           sizeof(packet), &packetLength) ==
+            MXW01_PROTOCOL_OK)
+      mxw01WriteControl(packet, packetLength);
+  }
 } /* tpSetEnergy */
 //
 // Send the preamble for transmitting graphics
@@ -1550,7 +1967,9 @@ static void tpPreGraphics(int iWidth, int iHeight)
 {
 uint8_t *s, ucTemp[16];
 
-  if (ucPrinterType == PRINTER_CAT) {
+  if (ucPrinterType == PRINTER_MXW01) {
+    (void)mxw01BeginPrint(iWidth, iHeight);
+  } else if (ucPrinterType == PRINTER_CAT) {
 //    tpWriteCatCommandD8(getDevState, 0);		// check for stte (paper, heat etc)
 //    tpWriteCatCommandD8(setQuality,0x33);		// probably 200 DPI?
 //    tpWriteData((uint8_t *)latticeStart, sizeof(latticeStart));	// I do not understand. Probably it start energize stepper motor
@@ -1585,7 +2004,9 @@ uint8_t *s, ucTemp[16];
 
 static void tpPostGraphics(void)
 {
-   if (ucPrinterType == PRINTER_CAT) {
+   if (ucPrinterType == PRINTER_MXW01) {
+      mxw01FinishPrint();
+   } else if (ucPrinterType == PRINTER_CAT) {
 //      tpWriteCatCommandD8(paperFeed,0x1E);
 //      tpWriteCatCommandD8(paperFeed,0x1E);
 //      tpWriteData((uint8_t *)latticeEnd, sizeof(latticeEnd));
@@ -1598,7 +2019,16 @@ static void tpPostGraphics(void)
 
 static void tpSendScanline(uint8_t *s, int iLen)
 {
-  if (ucPrinterType == PRINTER_CAT) {
+  if (ucPrinterType == PRINTER_MXW01) {
+      if (mxw01JobActive && iLen == (int)MXW01_BYTES_PER_ROW &&
+          mxw01SentLines < mxw01ExpectedLines) {
+        uint8_t row[MXW01_BYTES_PER_ROW];
+        for (i = 0; i < iLen; ++i)
+          row[i] = mxw01_reverse_bits(s[i]);
+        mxw01WriteImageData(row, sizeof(row));
+        ++mxw01SentLines;
+      }
+  } else if (ucPrinterType == PRINTER_CAT) {
       uint8_t ucTemp[64+8];
       ucTemp[0] = 0x51;
       ucTemp[1] = 0x78;
@@ -1659,22 +2089,24 @@ int i;
 
 void tpPrintBufferSide(void)
 {
-uint8_t *s;
-int x, y;
-uint8_t line[bb_pitch] = {0};
+  uint8_t *s;
+  int x, y;
+  int rotatedPitch = (bb_height + 7) >> 3;
+  uint8_t line[72]; // maximum supported printer width is 576 pixels
 
-  if (!bConnected)
+  if (!bConnected || rotatedPitch > (int)sizeof(line))
     return;
 
   tpPreGraphics(bb_height, bb_width);
   // Print the graphics
   s = pBackBuffer;
   for (y=0; y<bb_width; y++) {
+    memset(line, 0, rotatedPitch);
     for (x=0; x<bb_height; x++)
     {
       line[x/8] = (line[x/8] << 1) | (((*(s+((x+1)*bb_width-1-y)/8)) >> (y%8))&1);
     }
-    tpSendScanline(line, bb_pitch);
+    tpSendScanline(line, rotatedPitch);
   } // for y
   
   tpPostGraphics();

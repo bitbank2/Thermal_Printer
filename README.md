@@ -20,12 +20,29 @@ See the Wiki: https://github.com/bitbank2/Thermal_Printer/wiki/Public-API for a 
 <br>
 Features<br>
 ========<br>
-- Supports the GOOJPRT PT-210, MTP-3, PeriPage+ and 'cat' printers (so far)<br>
+- Supports the GOOJPRT PT-210, MTP-3, PeriPage+, MXW01 and 'cat' printers (so far)<br>
 - Compiles on ESP32, Adafruit nRF52 and Arduino boards with bluetooth<br>
 - Supports graphics (dots, lines, text, bitmaps), 1D + 2D barcodes, and plain text output<br>
 - Allows printing Adafruit_GFX fonts one line at a time or drawing them into a RAM buffer<br>
 - Can scan/connect to printers by BLE name or auto-detect the supported models<br>
 - Doesn't depend on any other 3rd party code<br>
+<br>
+
+MXW01 support<br>
+==============<br>
+The MXW01 is detected by its BLE name and uses service AE30 with separate AE01
+control, AE02 notification and AE03 image-data characteristics. Graphics buffers
+must be 384 pixels wide. The library converts its normal MSB-first graphics data
+to the LSB-first format expected by the printer and pads short jobs to 90 rows.
+Use `tpSetEnergy(0x00..0xFF)` to set print intensity; `0x5D` is the default.<br>
+<br>
+`tpPrint()` renders its built-in 8-pixel font as graphics on MXW01. Native
+ESC/POS font attributes, QR codes, and 1D barcodes are not supported by the
+known MXW01 protocol. See `examples/mxw01_print` for a complete graphics
+example. The 90-row minimum and blank-image implementation of `tpFeed()` still
+need validation against additional MXW01 firmware versions.<br>
+<br>
+Implementation based on https://github.com/jeremy46231/MXW01-catprinter . See MXW01 PROTOCOL.md for additional information.
 <br>
 
 Here is a subjective chart of the printer models I've tested and are supported by this code. Please feel free to send me info about other models that work and additional comments about these printers.<br>
