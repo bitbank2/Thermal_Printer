@@ -63,6 +63,7 @@ enum {
   PRINTER_PERIPAGEPLUS,
   PRINTER_PERIPAGE,
   PRINTER_FOMEMO,
+  PRINTER_MXW01,
   PRINTER_COUNT
 };
 
@@ -245,4 +246,8 @@ int tpScan(void);
 int tpConnect(void);
 void tpDisconnect(void);
 int tpIsConnected(void);
+
+// Send the MXW01 A1 Get Status command and wait for its notification.
+// Returns 1 when a response is received, otherwise 0.
+int tpGetStatus(void);
 #endif // __THERMAL_PRINTER_H__
